@@ -824,8 +824,9 @@ Expected: PASS (7 tests).
 
 - [ ] **Step 5: Run the full unit suite**
 
-Run: `node --test public/scripts/extensions/third-party/ST_IF/test/`
-Expected: PASS — canon, translator, state, turn, and vm.integration all green.
+Run: `node --test public/scripts/extensions/ST_IF/test/*.test.js`
+(Node 22 treats a bare directory arg as a module; use the glob. The VM integration test is excluded until the Glk harness spike lands.)
+Expected: PASS — canon, translator, state, and turn all green.
 
 - [ ] **Step 6: Commit**
 
