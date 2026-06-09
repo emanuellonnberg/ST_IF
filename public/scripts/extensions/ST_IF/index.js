@@ -13,6 +13,7 @@ import { decideMove, decideAgency } from './companion.js';
 import { runTurn } from './turn.js';
 import { readState, initState, getActiveSnapshot, rewindTo, KEY, setCompanion, getCompanionSnapshot } from './state.js';
 import { loadSettings, getSettings, wireSettingsUI, base64ToBytes } from './settings.js';
+import { stripReasoning } from './clean.js';
 
 const vm = new IFVM();
 const companionVM = new IFVM();
@@ -53,7 +54,7 @@ function buildDeps() {
                 console.error('[ST_IF] player-room narration failed', e);
                 return;   // fail-open: skip the extra block
             }
-            postComment(`*(${playerRoom})* ${String(prose || '').trim()}`);
+            postComment(`*(${playerRoom})* ${stripReasoning(prose)}`);
         },
         debugLog: s.showRawOutput
             ? ({ outputs, cmds }) => toastr.info(
