@@ -23,3 +23,19 @@ export function buildCanonBlock({ outputs, status, ranCommands, injectStateOnRp 
         statusLine(status),
     ].join('\n');
 }
+
+/**
+ * Canon for an APART turn, from the companion's point of view. The narrator
+ * ({{char}}) grounds in their own room and must not narrate {{user}}'s actions.
+ * @param {{companionRoom:string, companionScene:string, playerLocation:string}} args
+ */
+export function buildApartCanonBlock({ companionRoom, companionScene, playerLocation }) {
+    const lines = [
+        '[GAME — ground truth. You ({{char}}) are on your own, apart from {{user}}.]',
+        `You are at: ${companionRoom}.`,
+    ];
+    if (companionScene && companionScene.trim()) lines.push(companionScene.trim());
+    lines.push(`You do not know what {{user}} is doing; you last saw them near ${playerLocation}.`);
+    lines.push('Narrate only your own situation, in character. Do not describe {{user}}\'s actions.');
+    return lines.join('\n');
+}

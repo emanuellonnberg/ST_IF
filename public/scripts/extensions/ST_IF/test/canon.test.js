@@ -48,3 +48,24 @@ test('null score/moves are omitted gracefully', () => {
     assert.match(block, /Foyer/);
     assert.doesNotMatch(block, /Score:/);
 });
+
+import { buildApartCanonBlock } from '../canon.js';
+
+test('apart block grounds in the companion room and withholds player actions', () => {
+    const block = buildApartCanonBlock({
+        companionRoom: 'Misty Clearing',
+        companionScene: 'A clearing wreathed in fog. Paths lead north and east.',
+        playerLocation: 'Dark Cave',
+    });
+    assert.match(block, /apart/i);
+    assert.match(block, /Misty Clearing/);
+    assert.match(block, /fog/);
+    assert.match(block, /Dark Cave/);
+    assert.match(block, /do not/i);
+});
+
+test('apart block tolerates an empty companion scene', () => {
+    const block = buildApartCanonBlock({ companionRoom: 'Foyer', companionScene: '', playerLocation: 'Cellar' });
+    assert.match(block, /Foyer/);
+    assert.match(block, /Cellar/);
+});
