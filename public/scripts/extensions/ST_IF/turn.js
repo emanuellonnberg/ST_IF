@@ -34,13 +34,15 @@ export async function runTurn(deps, chat, type) {
     // 2. SWIPE / regen on the same message → reuse cached commands, do not re-step.
     if ((type === 'swipe' || type === 'regenerate') && lastTurn && lastTurn.msgIndex === player.index) {
         const status = vm.getStatus();
+        const reuseOutputs = lastTurn.outputs ?? [];
         const block = buildCanonBlock({
-            outputs: lastTurn.outputs ?? [],
+            outputs: reuseOutputs,
             status,
             ranCommands: (lastTurn.cmds ?? []).length > 0,
             injectStateOnRp: settings.injectStateOnRp,
         });
         if (block) setPrompt(block);
+        if (deps.debugLog && reuseOutputs.length) deps.debugLog({ outputs: reuseOutputs, status, cmds: lastTurn.cmds ?? [] });
         return;
     }
 
@@ -78,4 +80,5 @@ export async function runTurn(deps, chat, type) {
         injectStateOnRp: settings.injectStateOnRp,
     });
     if (block) setPrompt(block);
+    if (deps.debugLog && cmds.length) deps.debugLog({ outputs, status, cmds });
 }

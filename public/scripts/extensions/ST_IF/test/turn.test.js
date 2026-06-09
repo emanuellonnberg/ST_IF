@@ -87,6 +87,20 @@ test('pure-RP turn: injects status-only canon when injectStateOnRp=true', async 
     assert.match(deps._calls.setPrompt[0], /Cave/);
 });
 
+test('debugLog: invoked with raw outputs on an action turn, skipped on pure RP', async () => {
+    const logs = [];
+    const deps = makeDeps({ debugLog: (d) => logs.push(d) });
+    await runTurn(deps, [{ is_user: true, mes: 'go north' }], 'normal');
+    assert.equal(logs.length, 1);
+    assert.deepEqual(logs[0].cmds, ['north']);
+    assert.deepEqual(logs[0].outputs, ['did north']);
+
+    const logs2 = [];
+    const deps2 = makeDeps({ translate: async () => [], debugLog: (d) => logs2.push(d) });
+    await runTurn(deps2, [{ is_user: true, mes: 'I smile' }], 'normal');
+    assert.equal(logs2.length, 0, 'no debugLog when no commands ran');
+});
+
 test('swipe: reuses cached cmds, does NOT re-step or re-translate', async () => {
     const deps = makeDeps();
     const chat = [{ is_user: true, mes: 'I creep north' }];

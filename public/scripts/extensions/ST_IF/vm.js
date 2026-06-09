@@ -165,6 +165,7 @@ export class IFVM {
         this._glkote = null;
         this._vm = null;
         this._loaded = false;
+        this._intro = '';
     }
 
     _boot(storyBytes, snapshot) {
@@ -182,7 +183,8 @@ export class IFVM {
         this._dialog = dialog;
         this._vm = vm;
         this._loaded = true;
-        glkote.takeBuffer();   // discard boot/redraw text; callers read step output
+        const boot = glkote.takeBuffer();   // opening scene (fresh load) or redraw (restore)
+        if (!snapshot) this._intro = cleanOutput(boot, '');
     }
 
     /** Load a story file. bytes: Uint8Array of a .z3/.z5/.z8 file. Resets all state. */
@@ -190,6 +192,9 @@ export class IFVM {
         this._story = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
         this._boot(this._story, null);
     }
+
+    /** The opening scene text captured at load (empty after a restore). */
+    getIntro() { return this._intro; }
 
     /** Run one parser command, return the cleaned text the VM emitted. */
     step(command) {

@@ -30,7 +30,21 @@ function buildDeps() {
             setExtensionPrompt(KEY, '', extension_prompt_types.NONE, 0),
         save: () => saveMetadataDebounced(),
         settings: { strictness: s.strictness, injectStateOnRp: s.injectStateOnRp },
+        debugLog: s.showRawOutput
+            ? ({ outputs, cmds }) => toastr.info(
+                (outputs.join('\n') || '(no output)'),
+                `IF: ${cmds.join(', ')}`,
+                { timeOut: 9000, extendedTimeOut: 5000, escapeHtml: true })
+            : undefined,
     };
+}
+
+/** Dev-mode: surface the opening scene as a toast when "Show raw game output" is on. */
+function showIntroIfDebug() {
+    if (getSettings()?.showRawOutput && vm.loaded) {
+        const intro = vm.getIntro();
+        if (intro) toastr.info(intro, 'IF: opening scene', { timeOut: 12000, extendedTimeOut: 6000, escapeHtml: true });
+    }
 }
 
 // The generation interceptor — must be global, matched by manifest "generate_interceptor".
@@ -53,6 +67,7 @@ async function ensureStoryLoaded() {
     if (!readState(ctx.chatMetadata)) {
         initState(ctx.chatMetadata, s.storyName, vm.save());
         saveMetadataDebounced();
+        showIntroIfDebug();
     } else {
         // Resume: restore this chat's canonical snapshot.
         const snap = getActiveSnapshot(ctx.chatMetadata);
@@ -122,6 +137,7 @@ jQuery(async () => {
         await vm.load(base64ToBytes(s.storyBase64));
         initState(ctx.chatMetadata, name, vm.save());
         saveMetadataDebounced();
+        showIntroIfDebug();
     });
     registerSlashCommands();
     eventSource.on(event_types.CHAT_CHANGED, ensureStoryLoaded);

@@ -9,6 +9,7 @@ export const defaultSettings = {
     injectStateOnRp: false,
     strictness: 'strict',
     depth: 1,
+    showRawOutput: false,   // dev: surface raw VM output via toast
     storyName: '',
     storyBase64: '',   // the .z5/.z8 bytes, base64
 };
@@ -50,6 +51,9 @@ export function wireSettingsUI(onStoryLoaded) {
     });
     $('#st_if_inject_rp').prop('checked', s.injectStateOnRp).on('change', function () {
         s.injectStateOnRp = $(this).prop('checked'); saveSettingsDebounced();
+    });
+    $('#st_if_show_raw').prop('checked', s.showRawOutput).on('change', function () {
+        s.showRawOutput = $(this).prop('checked'); saveSettingsDebounced();
     });
     $('#st_if_strictness').val(s.strictness).on('change', function () {
         s.strictness = String($(this).val()); saveSettingsDebounced();

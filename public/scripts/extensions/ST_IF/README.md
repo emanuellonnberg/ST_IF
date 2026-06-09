@@ -56,6 +56,10 @@ chat forks the game state with it.
 - **Translator strictness** — *Strict* fires only on clear physical actions (the
   game stays invisible until you act); *Loose* maps more verbs.
 - **Canon injection depth** — how deep in the chat the canon block is injected.
+- **Show raw game output (debug)** — when on, the raw VM output of each action
+  (and the opening scene on load) is surfaced as a toast. The default is
+  narrator-only (raw IF text stays hidden, shaping the narrator's prose); this
+  toggle is for development/inspection.
 
 ## Slash commands
 
