@@ -56,10 +56,35 @@ chat forks the game state with it.
 - **Translator strictness** — *Strict* fires only on clear physical actions (the
   game stays invisible until you act); *Loose* maps more verbs.
 - **Canon injection depth** — how deep in the chat the canon block is injected.
+- **Companion location tracking** — give `{{char}}` its own location (see below).
+- **Companion stays near player** — how strongly the companion follows you vs wanders.
 - **Show raw game output (debug)** — when on, the raw VM output of each action
   (and the opening scene on load) is surfaced as a toast. The default is
   narrator-only (raw IF text stays hidden, shaping the narrator's prose); this
   toggle is for development/inspection.
+
+## Companion location tracking
+
+Optionally, the chat character (`{{char}}`) gets its **own location** in the world,
+separate from you. Enable **Companion location tracking** in the panel.
+
+- The companion is a **position-only marker**: it moves around the same map but never
+  takes or changes objects, so the two of you never desync the world.
+- Each turn a small LLM call decides whether the companion moves (one step) and which
+  way. The **"Companion stays near player"** slider biases this — high = tends to
+  follow you, low = wanders off.
+- When you're in the **same room**, play is the normal shared scene.
+- When you're **apart**, the narrator grounds in the companion's room and does **not**
+  know what you're doing elsewhere (real separation/reunion drama). Your own room is
+  narrated in a separate **comment message** — visible to you, but excluded from the
+  companion's prompt so they stay unaware.
+
+Cost note: an *apart* turn can make up to four LLM calls (translate, companion intent,
+your-room narration, companion reply). It's opt-in and the companion starts beside you,
+so cost only grows when you deliberately separate.
+
+Limitation: the companion never manipulates world objects (position only); giving it
+full independent play would desync the shared world (a Z-machine models one protagonist).
 
 ## Slash commands
 
