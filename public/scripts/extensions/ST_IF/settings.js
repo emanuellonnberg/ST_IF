@@ -59,16 +59,26 @@ export function wireSettingsUI(onStoryLoaded) {
     });
     $('#st_if_story_name').text(s.storyName || 'none loaded');
 
-    $('#st_if_story_upload').on('click', () => $('#st_if_story_file').trigger('click'));
-    $('#st_if_story_file').on('change', async function () {
+    $('#st_if_story_upload').off('click.st_if').on('click.st_if', () => {
+        const el = document.getElementById('st_if_story_file');
+        if (el) el.click();   // native click reliably opens the picker for a hidden input
+    });
+    $('#st_if_story_file').off('change.st_if').on('change.st_if', async function () {
         const file = this.files?.[0];
         if (!file) return;
-        const bytes = new Uint8Array(await file.arrayBuffer());
-        s.storyName = file.name;
-        s.storyBase64 = bytesToBase64(bytes);
-        saveSettingsDebounced();
-        $('#st_if_story_name').text(s.storyName);
-        await onStoryLoaded(file.name, bytes);
-        this.value = '';
+        try {
+            const bytes = new Uint8Array(await file.arrayBuffer());
+            s.storyName = file.name;
+            s.storyBase64 = bytesToBase64(bytes);
+            saveSettingsDebounced();
+            $('#st_if_story_name').text(s.storyName);
+            await onStoryLoaded(file.name, bytes);
+            toastr.success(`Loaded ${file.name}`, 'ST_IF');
+        } catch (e) {
+            console.error('[ST_IF] story load failed', e);
+            toastr.error(String(e?.message || e), 'ST_IF: story load failed');
+        } finally {
+            this.value = '';
+        }
     });
 }
