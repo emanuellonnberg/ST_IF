@@ -7,6 +7,21 @@ const DIRECTIONS = new Set([
     'n', 's', 'e', 'w', 'u', 'd',
 ]);
 
+/** Pull the compass-direction commands out of a translated command list, in order. */
+export function extractMoves(cmds) {
+    return (cmds || [])
+        .map((c) => String(c).trim().toLowerCase())
+        .filter((c) => DIRECTIONS.has(c));
+}
+
+/** Map the bias slider to a deterministic behavior zone. */
+export function zone(bias) {
+    const b = Number(bias);
+    if (b >= 0.66) return 'glued';
+    if (b <= 0.33) return 'wander';
+    return 'trail';
+}
+
 export function buildIntentPrompt(playerText, playerRoom, companionRoom, bias) {
     const lean = bias >= 0.66 ? 'You strongly prefer to stay close to them and tend to follow.'
         : bias <= 0.33 ? 'You are independent and often wander on your own.'

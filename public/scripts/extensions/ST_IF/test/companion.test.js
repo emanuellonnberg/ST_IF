@@ -39,3 +39,22 @@ test('fails open to null when the generator throws', async () => {
     const gen = async () => { throw new Error('llm down'); };
     assert.equal(await decideMove('x', 'A', 'B', 0.5, gen), null);
 });
+
+import { extractMoves, zone } from '../companion.js';
+
+test('extractMoves keeps compass directions and drops other verbs', () => {
+    assert.deepEqual(extractMoves(['take lantern', 'north']), ['north']);
+    assert.deepEqual(extractMoves(['look']), []);
+    assert.deepEqual(extractMoves([]), []);
+    assert.deepEqual(extractMoves(['N', 'south', 'GET key']), ['n', 'south']);
+});
+
+test('zone maps bias to glued / trail / wander', () => {
+    assert.equal(zone(0.8), 'glued');
+    assert.equal(zone(0.66), 'glued');
+    assert.equal(zone(0.5), 'trail');
+    assert.equal(zone(0.34), 'trail');
+    assert.equal(zone(0.33), 'wander');
+    assert.equal(zone(0.2), 'wander');
+    assert.equal(zone(undefined), 'trail');
+});
