@@ -58,3 +58,42 @@ test('zone maps bias to glued / trail / wander', () => {
     assert.equal(zone(0.2), 'wander');
     assert.equal(zone(undefined), 'trail');
 });
+
+import { buildAgencyPrompt, decideAgency } from '../companion.js';
+
+test('agency prompt includes rooms, player moves, and the clinginess lean', () => {
+    const p = buildAgencyPrompt('I sprint off', 'Cave', 'Hall', ['north'], 0.8);
+    assert.match(p, /Cave/);
+    assert.match(p, /Hall/);
+    assert.match(p, /north/);
+    assert.match(p, /I sprint off/);
+    assert.match(p, /rarely break off/i);
+});
+
+test('decideAgency parses follow / stay / move', async () => {
+    assert.deepEqual(await decideAgency('x', 'A', 'B', ['north'], 0.7, async () => '{"action":"follow"}'),
+        { action: 'follow', direction: null });
+    assert.deepEqual(await decideAgency('x', 'A', 'B', [], 0.7, async () => '{"action":"stay"}'),
+        { action: 'stay', direction: null });
+    assert.deepEqual(await decideAgency('x', 'A', 'B', [], 0.3, async () => '{"action":"move","direction":"south"}'),
+        { action: 'move', direction: 'south' });
+});
+
+test('decideAgency downgrades a move with a non-direction to stay', async () => {
+    assert.deepEqual(await decideAgency('x', 'A', 'B', [], 0.3, async () => '{"action":"move","direction":"take lamp"}'),
+        { action: 'stay', direction: null });
+});
+
+test('decideAgency fails open to follow on unknown action, garbage, or throw', async () => {
+    assert.deepEqual(await decideAgency('x', 'A', 'B', [], 0.7, async () => '{"action":"dance"}'),
+        { action: 'follow', direction: null });
+    assert.deepEqual(await decideAgency('x', 'A', 'B', [], 0.7, async () => 'no json here'),
+        { action: 'follow', direction: null });
+    assert.deepEqual(await decideAgency('x', 'A', 'B', [], 0.7, async () => { throw new Error('down'); }),
+        { action: 'follow', direction: null });
+});
+
+test('decideAgency extracts JSON wrapped in prose', async () => {
+    assert.deepEqual(await decideAgency('x', 'A', 'B', [], 0.7, async () => 'Sure:\n{"action":"stay"}\nok'),
+        { action: 'stay', direction: null });
+});

@@ -65,3 +65,54 @@ export async function decideMove(playerText, playerRoom, companionRoom, bias, ge
     const norm = move.trim().toLowerCase();
     return DIRECTIONS.has(norm) ? norm : null;
 }
+
+const ACTIONS = new Set(['follow', 'stay', 'move']);
+
+export function buildAgencyPrompt(playerText, playerRoom, companionRoom, playerMoves, bias) {
+    const lean = bias >= 0.66 ? 'You strongly prefer to stay with {{user}} and rarely break off.'
+        : bias <= 0.33 ? 'You are independent and often go your own way.'
+            : 'You balance staying with them against doing your own thing.';
+    const movesNote = playerMoves.length
+        ? `{{user}} just moved: ${playerMoves.join(', ')}.`
+        : '{{user}} did not move this turn.';
+    return [
+        'You control a companion character on a map. Decide what they do THIS turn.',
+        `The companion is at: ${companionRoom}. {{user}} is at: ${playerRoom}.`,
+        movesNote,
+        `{{user}} said/did: ${playerText}`,
+        `Disposition: ${lean}`,
+        'Choose ONE: follow {{user}} (go where they went), stay (hang back here), or move (go your own way).',
+        'Respond with ONLY JSON: {"action":"follow"|"stay"|"move","direction":"<compass word or null>"}.',
+    ].join('\n');
+}
+
+function extractObject(text) {
+    const start = text.indexOf('{');
+    const end = text.lastIndexOf('}');
+    if (start === -1 || end === -1 || end < start) return null;
+    try {
+        return JSON.parse(text.slice(start, end + 1));
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * @returns {Promise<{action:'follow'|'stay'|'move', direction:string|null}>}
+ */
+export async function decideAgency(playerText, playerRoom, companionRoom, playerMoves, bias, generate) {
+    let raw;
+    try {
+        raw = await generate(buildAgencyPrompt(playerText, playerRoom, companionRoom, playerMoves, bias));
+    } catch {
+        return { action: 'follow', direction: null };
+    }
+    const obj = extractObject(String(raw ?? ''));
+    if (!obj || !ACTIONS.has(obj.action)) return { action: 'follow', direction: null };
+    if (obj.action === 'move') {
+        const d = typeof obj.direction === 'string' ? obj.direction.trim().toLowerCase() : '';
+        if (!DIRECTIONS.has(d)) return { action: 'stay', direction: null };
+        return { action: 'move', direction: d };
+    }
+    return { action: obj.action, direction: null };
+}
