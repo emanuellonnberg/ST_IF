@@ -69,3 +69,20 @@ test('apart block tolerates an empty companion scene', () => {
     assert.match(block, /Foyer/);
     assert.match(block, /Cellar/);
 });
+
+test('apart block adds companion and player departure directions when given', () => {
+    const block = buildApartCanonBlock({
+        companionRoom: 'Clearing', companionScene: 'Fog drifts.', playerLocation: 'Cave',
+        playerDir: 'north', companionDir: 'east',
+    });
+    assert.match(block, /You headed east/);
+    assert.match(block, /\{\{user\}\} headed north/);
+});
+
+test('apart block omits direction lines when dirs are null', () => {
+    const block = buildApartCanonBlock({
+        companionRoom: 'Clearing', companionScene: '', playerLocation: 'Cave',
+        playerDir: null, companionDir: null,
+    });
+    assert.doesNotMatch(block, /headed/);
+});
