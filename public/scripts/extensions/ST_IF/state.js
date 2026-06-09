@@ -8,8 +8,36 @@ export function readState(metadata) {
 }
 
 export function initState(metadata, storyId, snapshot) {
-    metadata[KEY] = { storyId, snapshot, summary: null, history: [] };
+    metadata[KEY] = {
+        storyId, snapshot, summary: null, history: [],
+        companion: { snapshot, summary: null },
+        together: true,
+    };
     return metadata[KEY];
+}
+
+export function getCompanionSnapshot(metadata) {
+    const s = metadata[KEY];
+    if (!s) return null;
+    return s.companion?.snapshot ?? s.snapshot ?? null;   // legacy fallback: player snapshot
+}
+
+export function setCompanion(metadata, { snapshot, summary }) {
+    const s = metadata[KEY];
+    if (!s) throw new Error('ST_IF state not initialized');
+    s.companion = { snapshot, summary: summary ?? null };
+}
+
+export function setTogether(metadata, value) {
+    const s = metadata[KEY];
+    if (!s) throw new Error('ST_IF state not initialized');
+    s.together = !!value;
+}
+
+export function readTogether(metadata) {
+    const s = metadata[KEY];
+    if (!s) return true;
+    return s.together ?? true;   // legacy default: together
 }
 
 /**

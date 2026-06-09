@@ -62,3 +62,41 @@ test('history is capped at HISTORY_CAP, dropping oldest', () => {
 test('readState returns null when no game initialized', () => {
     assert.equal(readState({}), null);
 });
+
+import { initState as initState2, readState as readState2, getCompanionSnapshot, setCompanion, setTogether, readTogether } from '../state.js';
+
+test('initState seeds a co-located companion and together=true', () => {
+    const md = {};
+    initState2(md, 'tiny.z5', 'SNAP0');
+    assert.equal(getCompanionSnapshot(md), 'SNAP0');
+    assert.equal(readTogether(md), true);
+    assert.equal(readState2(md).snapshot, 'SNAP0');
+});
+
+test('setCompanion updates the companion snapshot/summary without touching the player', () => {
+    const md = {};
+    initState2(md, 'tiny.z5', 'SNAP0');
+    setCompanion(md, { snapshot: 'CSNAP1', summary: { location: 'Cave' } });
+    assert.equal(getCompanionSnapshot(md), 'CSNAP1');
+    assert.equal(readState2(md).companion.summary.location, 'Cave');
+    assert.equal(readState2(md).snapshot, 'SNAP0', 'player snapshot untouched');
+});
+
+test('setTogether / readTogether round-trip', () => {
+    const md = {};
+    initState2(md, 'tiny.z5', 'SNAP0');
+    setTogether(md, false);
+    assert.equal(readTogether(md), false);
+});
+
+test('getCompanionSnapshot falls back to the player snapshot for legacy state (no companion field)', () => {
+    const md = { ST_IF: { storyId: 'x', snapshot: 'PLAYERSNAP', summary: null, history: [] } };
+    assert.equal(getCompanionSnapshot(md), 'PLAYERSNAP');
+    assert.equal(readTogether(md), true, 'legacy state defaults to together');
+});
+
+test('setCompanion seeds the companion object on legacy state', () => {
+    const md = { ST_IF: { storyId: 'x', snapshot: 'P', summary: null, history: [] } };
+    setCompanion(md, { snapshot: 'C', summary: null });
+    assert.equal(getCompanionSnapshot(md), 'C');
+});
