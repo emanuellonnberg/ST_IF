@@ -111,3 +111,57 @@ test('swipe: reuses cached cmds, does NOT re-step or re-translate', async () => 
     assert.equal(deps._calls.setPrompt.length, 2, 'canon re-injected on swipe');
     assert.match(deps._calls.setPrompt[1], /did north/);
 });
+
+function makeCompanionVM(room) {
+    return {
+        loaded: true, room, steps: [], _snap: 'CSNAP0',
+        step(cmd) { this.steps.push(cmd); if (cmd !== 'look') this.room = cmd; return `companion does ${cmd}`; },
+        save() { return this._snap; },
+        restore(s) { this._snap = s; },
+        getStatus() { return { location: this.room, score: 0, moves: 0 }; },
+    };
+}
+
+test('companion tracking off: companionVM never touched, no together computed', async () => {
+    const deps = makeDeps();
+    deps.companionVM = makeCompanionVM('Cave');
+    deps.companionMove = async () => 'north';
+    deps.settings = { strictness: 'strict', injectStateOnRp: false, companionTracking: false };
+    await runTurn(deps, [{ is_user: true, mes: 'go north' }], 'normal');
+    assert.deepEqual(deps.companionVM.steps, []);
+});
+
+test('together: companion in same room -> shared canon, together=true persisted', async () => {
+    const deps = makeDeps();
+    deps.companionVM = makeCompanionVM('Cave');
+    deps.companionMove = async () => null;
+    deps.settings = { strictness: 'strict', injectStateOnRp: false, companionTracking: true };
+    await runTurn(deps, [{ is_user: true, mes: 'I wait' }], 'normal');
+    assert.match(deps._calls.setPrompt[0], /Cave/);
+    assert.doesNotMatch(deps._calls.setPrompt[0], /apart/i);
+    const { readTogether } = await import('../state.js');
+    assert.equal(readTogether(deps.metadata), true);
+});
+
+test('apart: companion moves to a different room -> apart canon, together=false', async () => {
+    const deps = makeDeps();
+    deps.companionVM = makeCompanionVM('Clearing');
+    deps.companionMove = async () => 'north';
+    deps.settings = { strictness: 'strict', injectStateOnRp: false, companionTracking: true };
+    await runTurn(deps, [{ is_user: true, mes: 'I dig' }], 'normal');
+    assert.deepEqual(deps.companionVM.steps, ['north']);
+    assert.match(deps._calls.setPrompt[0], /apart/i);
+    const { readTogether, getCompanionSnapshot } = await import('../state.js');
+    assert.equal(readTogether(deps.metadata), false);
+    assert.equal(getCompanionSnapshot(deps.metadata), 'CSNAP0');
+});
+
+test('apart with no move: companion looks to describe its room', async () => {
+    const deps = makeDeps();
+    deps.companionVM = makeCompanionVM('Clearing');
+    deps.companionMove = async () => null;
+    deps.settings = { strictness: 'strict', injectStateOnRp: false, companionTracking: true };
+    await runTurn(deps, [{ is_user: true, mes: 'I dig' }], 'normal');
+    assert.deepEqual(deps.companionVM.steps, ['look']);
+    assert.match(deps._calls.setPrompt[0], /Clearing/);
+});

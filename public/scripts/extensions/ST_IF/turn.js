@@ -1,7 +1,7 @@
 // turn.js — orchestrate one chat turn. Pure: all ST/VM deps injected.
-import { readState, recordTurn, getActiveSnapshot } from './state.js';
+import { readState, recordTurn, getActiveSnapshot, setCompanion, setTogether } from './state.js';
 import { translate as translateDefault } from './translator.js';
-import { buildCanonBlock } from './canon.js';
+import { buildCanonBlock, buildApartCanonBlock } from './canon.js';
 
 const SKIP_TYPES = new Set(['quiet', 'impersonate']);
 
@@ -72,7 +72,39 @@ export async function runTurn(deps, chat, type) {
     justAdded.outputs = outputs;
     save();
 
-    // 7. INJECT canon.
+    // 7. COMPANION (position-only second marker), if tracking is on.
+    if (settings.companionTracking && deps.companionVM?.loaded) {
+        const companionVM = deps.companionVM;
+        const playerRoom = status.location;
+        const companionRoomBefore = companionVM.getStatus().location;
+        const move = await deps.companionMove(player.text, playerRoom, companionRoomBefore);
+        const companionScene = move ? companionVM.step(move) : companionVM.step('look');
+        const companionStatus = companionVM.getStatus();
+        const together = playerRoom === companionStatus.location;
+
+        setCompanion(metadata, { snapshot: companionVM.save(), summary: companionStatus });
+        setTogether(metadata, together);
+        save();
+
+        if (together) {
+            const block = buildCanonBlock({ outputs, status, ranCommands: cmds.length > 0, injectStateOnRp: settings.injectStateOnRp });
+            if (block) setPrompt(block);
+        } else {
+            const block = buildApartCanonBlock({
+                companionRoom: companionStatus.location,
+                companionScene,
+                playerLocation: playerRoom,
+            });
+            setPrompt(block);
+            if (deps.onNarratePlayerRoom) {
+                await deps.onNarratePlayerRoom({ playerRoom, outputs, cmds, msgIndex: player.index });
+            }
+        }
+        if (deps.debugLog && cmds.length) deps.debugLog({ outputs, status, cmds });
+        return;
+    }
+
+    // 7b. No companion tracking — original single-marker canon.
     const block = buildCanonBlock({
         outputs,
         status,
