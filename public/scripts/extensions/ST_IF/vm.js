@@ -177,7 +177,10 @@ export class IFVM {
             vm, Glk, GlkOte: glkote, Dialog: dialog, GiDispa: new ZVMDispatch(),
             do_vm_autosave: snapshot ? 1 : 0,
         };
-        vm.prepare(storyBytes instanceof Uint8Array ? storyBytes : new Uint8Array(storyBytes), options);
+        // Always hand the VM its OWN copy of the bytes: ZVM keeps a live reference
+        // to the story buffer for dynamic memory, so two VM instances sharing one
+        // ArrayBuffer would corrupt each other (the player and companion VMs do).
+        vm.prepare(new Uint8Array(storyBytes), options);
         Glk.init(options);   // synchronously runs the VM to its first input request
         this._glkote = glkote;
         this._dialog = dialog;

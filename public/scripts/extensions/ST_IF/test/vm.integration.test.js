@@ -46,6 +46,22 @@ test('command echo and prompt are stripped from output', async () => {
     assert.doesNotMatch(out, />\s*$/, 'trailing prompt stripped');
 });
 
+test('two VM instances are independent (no shared story buffer)', async () => {
+    // The companion feature runs two live VMs of the same story at once. They must
+    // not share dynamic memory: moving one must not move the other.
+    const a = new IFVM();
+    await a.load(story);
+    const b = new IFVM();
+    await b.load(story);
+    const bStart = b.getStatus().location;
+    a.step('north');                               // move A only
+    assert.notEqual(a.getStatus().location, bStart, 'A moved');
+    assert.equal(b.getStatus().location, bStart, 'B unaffected by A moving');
+    const bLook = b.step('look');                  // B still in its own room
+    assert.match(bLook, new RegExp(bStart.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'));
+    assert.equal(b.getStatus().location, bStart, 'B still in its own room after look');
+});
+
 test('save/restore round-trips through base64 JSON and reproduces next-step output', async () => {
     const vm = new IFVM();
     await vm.load(story);
