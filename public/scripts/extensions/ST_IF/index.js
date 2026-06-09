@@ -1,8 +1,8 @@
 import {
     setExtensionPrompt, extension_prompt_types, extension_prompt_roles,
-    generateQuietPrompt, eventSource, event_types, saveMetadataDebounced,
+    generateQuietPrompt, eventSource, event_types,
 } from '../../../script.js';
-import { getContext, renderExtensionTemplateAsync } from '../../extensions.js';
+import { getContext, renderExtensionTemplateAsync, saveMetadataDebounced } from '../../extensions.js';
 import { SlashCommandParser } from '../../slash-commands/SlashCommandParser.js';
 import { SlashCommand } from '../../slash-commands/SlashCommand.js';
 import { ARGUMENT_TYPE, SlashCommandArgument } from '../../slash-commands/SlashCommandArgument.js';
