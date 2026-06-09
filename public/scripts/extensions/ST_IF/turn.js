@@ -80,28 +80,42 @@ export async function runTurn(deps, chat, type) {
         const playerMoves = extractMoves(cmds);
         const playerDir = playerMoves.length ? playerMoves[playerMoves.length - 1] : null;
 
-        const z = zone(settings.companionBias);
-        let queue = getFollowQueue(metadata).slice();
         let companionDir = null;
         const companionOutputs = [];
+        let queue = getFollowQueue(metadata).slice();
 
-        if (z === 'glued') {
-            for (const d of playerMoves) companionOutputs.push(companionVM.step(d));
-            if (playerMoves.length) companionDir = playerMoves[playerMoves.length - 1];
-            queue = [];
-        } else if (z === 'trail') {
-            queue.push(...playerMoves);
-            if (queue.length) {
-                companionDir = queue.shift();
-                companionOutputs.push(companionVM.step(companionDir));
+        if (settings.companionAgency) {
+            // The companion decides for itself: follow / stay / own-way.
+            const decision = await deps.companionDecide(player.text, playerRoom, companionVM.getStatus().location, playerMoves);
+            if (decision.action === 'follow') {
+                for (const d of playerMoves) companionOutputs.push(companionVM.step(d));
+                if (playerMoves.length) companionDir = playerMoves[playerMoves.length - 1];
+            } else if (decision.action === 'move' && decision.direction) {
+                companionDir = decision.direction;
+                companionOutputs.push(companionVM.step(decision.direction));
+            } // 'stay' → no step
+            queue = [];   // agency mode does not use the trail queue
+        } else {
+            // Deterministic zones.
+            const z = zone(settings.companionBias);
+            if (z === 'glued') {
+                for (const d of playerMoves) companionOutputs.push(companionVM.step(d));
+                if (playerMoves.length) companionDir = playerMoves[playerMoves.length - 1];
+                queue = [];
+            } else if (z === 'trail') {
+                queue.push(...playerMoves);
+                if (queue.length) {
+                    companionDir = queue.shift();
+                    companionOutputs.push(companionVM.step(companionDir));
+                }
+            } else { // wander
+                const d = await deps.companionMove(player.text, playerRoom, companionVM.getStatus().location);
+                if (d) {
+                    companionDir = d;
+                    companionOutputs.push(companionVM.step(d));
+                }
+                queue = [];
             }
-        } else { // wander
-            const d = await deps.companionMove(player.text, playerRoom, companionVM.getStatus().location);
-            if (d) {
-                companionDir = d;
-                companionOutputs.push(companionVM.step(d));
-            }
-            queue = [];
         }
 
         const companionScene = companionOutputs.length

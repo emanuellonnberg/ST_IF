@@ -161,3 +161,39 @@ test('wander (bias<=0.33): uses the LLM decideMove, ignores player moves', async
     const { getFollowQueue } = await import('../state.js');
     assert.deepEqual(getFollowQueue(deps.metadata), [], 'wander does not queue');
 });
+
+test('agency follow: mirrors all player moves', async () => {
+    const deps = makeDeps({ translate: async () => ['north', 'west'] });
+    deps.companionVM = makeCompanionVM('Cave');
+    deps.companionDecide = async () => ({ action: 'follow', direction: null });
+    deps.settings = { strictness: 'strict', injectStateOnRp: false, companionTracking: true, companionAgency: true, companionBias: 0.8 };
+    await runTurn(deps, [{ is_user: true, mes: 'I go north then west' }], 'normal');
+    assert.deepEqual(deps.companionVM.steps, ['north', 'west']);
+});
+
+test('agency move: steps the chosen direction', async () => {
+    const deps = makeDeps({ translate: async () => ['north'] });
+    deps.companionVM = makeCompanionVM('Cave');
+    deps.companionDecide = async () => ({ action: 'move', direction: 'south' });
+    deps.settings = { strictness: 'strict', injectStateOnRp: false, companionTracking: true, companionAgency: true, companionBias: 0.5 };
+    await runTurn(deps, [{ is_user: true, mes: 'I go north' }], 'normal');
+    assert.deepEqual(deps.companionVM.steps, ['south']);
+});
+
+test('agency stay: no movement (only a look to describe the room)', async () => {
+    const deps = makeDeps({ translate: async () => ['north'] });
+    deps.companionVM = makeCompanionVM('Cave');
+    deps.companionDecide = async () => ({ action: 'stay', direction: null });
+    deps.settings = { strictness: 'strict', injectStateOnRp: false, companionTracking: true, companionAgency: true, companionBias: 0.5 };
+    await runTurn(deps, [{ is_user: true, mes: 'I go north' }], 'normal');
+    assert.deepEqual(deps.companionVM.steps, ['look']);
+});
+
+test('agency off: zone logic runs, companionDecide is never called', async () => {
+    const deps = makeDeps({ translate: async () => ['north', 'west'] });
+    deps.companionVM = makeCompanionVM('Cave');
+    deps.companionDecide = async () => { throw new Error('must not call agency when off'); };
+    deps.settings = { strictness: 'strict', injectStateOnRp: false, companionTracking: true, companionAgency: false, companionBias: 0.5 };
+    await runTurn(deps, [{ is_user: true, mes: 'I go north then west' }], 'normal');
+    assert.deepEqual(deps.companionVM.steps, ['north'], 'trail zone consumed one move');
+});
