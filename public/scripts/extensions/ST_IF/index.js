@@ -31,17 +31,18 @@ function buildDeps() {
         clearPrompt: () =>
             setExtensionPrompt(KEY, '', extension_prompt_types.NONE, 0),
         save: () => saveMetadataDebounced(),
-        settings: { strictness: s.strictness, injectStateOnRp: s.injectStateOnRp, companionTracking: s.companionTracking },
+        settings: { strictness: s.strictness, injectStateOnRp: s.injectStateOnRp, companionTracking: s.companionTracking, companionBias: s.companionBias },
         companionVM,
         companionMove: (playerText, playerRoom, companionRoom) =>
             decideMove(playerText, playerRoom, companionRoom, getSettings().companionBias,
                 (prompt) => generateQuietPrompt({ quietPrompt: prompt, responseLength: 40, skipWIAN: true })),
-        onNarratePlayerRoom: async ({ playerRoom, outputs }) => {
+        onNarratePlayerRoom: async ({ playerRoom, outputs, companionDir }) => {
             const result = (outputs || []).join('\n').trim() || '(you wait)';
+            const leftNote = companionDir ? ` {{char}} has just left, heading ${companionDir}.` : '';
             let prose;
             try {
                 prose = await generateQuietPrompt({
-                    quietPrompt: `[Narrate, in 2-3 vivid third-person sentences, the following happening to {{user}}, who is alone at "${playerRoom}". Do not mention {{char}}. Event:\n${result}]`,
+                    quietPrompt: `[Narrate, in 2-3 vivid third-person sentences, the following happening to {{user}}, who is alone at "${playerRoom}".${leftNote} Do not voice {{char}}. Event:\n${result}]`,
                     responseLength: 160,
                     skipWIAN: true,
                 });
