@@ -1,6 +1,6 @@
 import {
     setExtensionPrompt, extension_prompt_types, extension_prompt_roles,
-    generateQuietPrompt, eventSource, event_types,
+    generateQuietPrompt, generateRaw, eventSource, event_types,
 } from '../../../script.js';
 import { getContext, renderExtensionTemplateAsync, saveMetadataDebounced } from '../../extensions.js';
 import { SlashCommandParser } from '../../slash-commands/SlashCommandParser.js';
@@ -36,6 +36,21 @@ function buildDeps() {
         companionMove: (playerText, playerRoom, companionRoom) =>
             decideMove(playerText, playerRoom, companionRoom, getSettings().companionBias,
                 (prompt) => generateQuietPrompt({ quietPrompt: prompt, responseLength: 40, skipWIAN: true })),
+        onNarratePlayerRoom: async ({ playerRoom, outputs }) => {
+            const result = (outputs || []).join('\n').trim() || '(you wait)';
+            let prose;
+            try {
+                prose = await generateRaw({
+                    prompt: `You are a neutral narrator. In 2-3 sentences, vividly narrate the following happening to {{user}}, who is alone at "${playerRoom}". Do not mention {{char}}. Event:\n${result}`,
+                    systemPrompt: 'You narrate interactive fiction scenes concisely and in third person.',
+                    responseLength: 160,
+                });
+            } catch (e) {
+                console.error('[ST_IF] player-room narration failed', e);
+                return;   // fail-open: skip the extra block
+            }
+            await postComment(`*(${playerRoom})* ${prose}`);
+        },
         debugLog: s.showRawOutput
             ? ({ outputs, cmds }) => toastr.info(
                 (outputs.join('\n') || '(no output)'),
@@ -43,6 +58,15 @@ function buildDeps() {
                 { timeOut: 9000, extendedTimeOut: 5000, escapeHtml: true })
             : undefined,
     };
+}
+
+/**
+ * Post text as a comment message: displayed to the user but excluded from the LLM
+ * prompt — so the companion narrator never sees the player's-room block.
+ */
+async function postComment(text) {
+    const ctx = getContext();
+    await ctx.executeSlashCommandsWithOptions(`/comment ${text.replace(/\n/g, ' ')}`);
 }
 
 /** Dev-mode: surface the opening scene as a toast when "Show raw game output" is on. */
