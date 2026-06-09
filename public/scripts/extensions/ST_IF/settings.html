@@ -28,6 +28,11 @@
             <label for="st_if_bias" title="High = the companion mirrors your moves and stays with you. Middle = trails one room behind. Low = wanders on its own.">Companion stays near player (glued / trail / wander)</label>
             <input id="st_if_bias" type="range" min="0" max="1" step="0.1" class="text_pole" />
 
+            <label class="checkbox_label" title="Let the companion decide each turn (follow, hang back, or go its own way). The slider becomes how clingy it is.">
+                <input id="st_if_agency" type="checkbox" />
+                <span>Companion can choose (agency)</span>
+            </label>
+
             <label for="st_if_strictness">Translator strictness</label>
             <select id="st_if_strictness" class="text_pole">
                 <option value="strict">Strict (only clear actions)</option>

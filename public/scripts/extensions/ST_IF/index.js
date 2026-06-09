@@ -9,7 +9,7 @@ import { ARGUMENT_TYPE, SlashCommandArgument } from '../../slash-commands/SlashC
 
 import { IFVM } from './vm.js';
 import { translate } from './translator.js';
-import { decideMove } from './companion.js';
+import { decideMove, decideAgency } from './companion.js';
 import { runTurn } from './turn.js';
 import { readState, initState, getActiveSnapshot, rewindTo, KEY, setCompanion, getCompanionSnapshot } from './state.js';
 import { loadSettings, getSettings, wireSettingsUI, base64ToBytes } from './settings.js';
@@ -31,10 +31,13 @@ function buildDeps() {
         clearPrompt: () =>
             setExtensionPrompt(KEY, '', extension_prompt_types.NONE, 0),
         save: () => saveMetadataDebounced(),
-        settings: { strictness: s.strictness, injectStateOnRp: s.injectStateOnRp, companionTracking: s.companionTracking, companionBias: s.companionBias },
+        settings: { strictness: s.strictness, injectStateOnRp: s.injectStateOnRp, companionTracking: s.companionTracking, companionBias: s.companionBias, companionAgency: s.companionAgency },
         companionVM,
         companionMove: (playerText, playerRoom, companionRoom) =>
             decideMove(playerText, playerRoom, companionRoom, getSettings().companionBias,
+                (prompt) => generateQuietPrompt({ quietPrompt: prompt, responseLength: 40, skipWIAN: true })),
+        companionDecide: (playerText, playerRoom, companionRoom, playerMoves) =>
+            decideAgency(playerText, playerRoom, companionRoom, playerMoves, getSettings().companionBias,
                 (prompt) => generateQuietPrompt({ quietPrompt: prompt, responseLength: 40, skipWIAN: true })),
         onNarratePlayerRoom: async ({ playerRoom, outputs, companionDir }) => {
             const result = (outputs || []).join('\n').trim() || '(you wait)';

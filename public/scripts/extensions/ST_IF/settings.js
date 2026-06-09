@@ -12,6 +12,7 @@ export const defaultSettings = {
     showRawOutput: false,   // dev: surface raw VM output via toast
     companionTracking: false,
     companionBias: 0.7,     // 0 = wanders freely, 1 = stays glued to the player
+    companionAgency: false, // LLM decides follow/stay/move instead of the deterministic zones
     storyName: '',
     storyBase64: '',   // the .z5/.z8 bytes, base64
 };
@@ -62,6 +63,9 @@ export function wireSettingsUI(onStoryLoaded) {
     });
     $('#st_if_bias').val(s.companionBias).on('input', function () {
         s.companionBias = Number($(this).val()); saveSettingsDebounced();
+    });
+    $('#st_if_agency').prop('checked', s.companionAgency).on('change', function () {
+        s.companionAgency = $(this).prop('checked'); saveSettingsDebounced();
     });
     $('#st_if_strictness').val(s.strictness).on('change', function () {
         s.strictness = String($(this).val()); saveSettingsDebounced();
