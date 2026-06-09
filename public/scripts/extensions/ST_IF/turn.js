@@ -1,6 +1,7 @@
 // turn.js — orchestrate one chat turn. Pure: all ST/VM deps injected.
-import { readState, recordTurn, getActiveSnapshot, setCompanion, setTogether } from './state.js';
+import { readState, recordTurn, getActiveSnapshot, setCompanion, setTogether, getFollowQueue, setFollowQueue } from './state.js';
 import { translate as translateDefault } from './translator.js';
+import { extractMoves, zone } from './companion.js';
 import { buildCanonBlock, buildApartCanonBlock } from './canon.js';
 
 const SKIP_TYPES = new Set(['quiet', 'impersonate']);
@@ -76,13 +77,41 @@ export async function runTurn(deps, chat, type) {
     if (settings.companionTracking && deps.companionVM?.loaded) {
         const companionVM = deps.companionVM;
         const playerRoom = status.location;
-        const companionRoomBefore = companionVM.getStatus().location;
-        const move = await deps.companionMove(player.text, playerRoom, companionRoomBefore);
-        const companionScene = move ? companionVM.step(move) : companionVM.step('look');
+        const playerMoves = extractMoves(cmds);
+        const playerDir = playerMoves.length ? playerMoves[playerMoves.length - 1] : null;
+
+        const z = zone(settings.companionBias);
+        let queue = getFollowQueue(metadata).slice();
+        let companionDir = null;
+        const companionOutputs = [];
+
+        if (z === 'glued') {
+            for (const d of playerMoves) companionOutputs.push(companionVM.step(d));
+            if (playerMoves.length) companionDir = playerMoves[playerMoves.length - 1];
+            queue = [];
+        } else if (z === 'trail') {
+            queue.push(...playerMoves);
+            if (queue.length) {
+                companionDir = queue.shift();
+                companionOutputs.push(companionVM.step(companionDir));
+            }
+        } else { // wander
+            const d = await deps.companionMove(player.text, playerRoom, companionVM.getStatus().location);
+            if (d) {
+                companionDir = d;
+                companionOutputs.push(companionVM.step(d));
+            }
+            queue = [];
+        }
+
+        const companionScene = companionOutputs.length
+            ? companionOutputs[companionOutputs.length - 1]
+            : companionVM.step('look');
         const companionStatus = companionVM.getStatus();
         const together = playerRoom === companionStatus.location;
 
         setCompanion(metadata, { snapshot: companionVM.save(), summary: companionStatus });
+        setFollowQueue(metadata, queue);
         setTogether(metadata, together);
         save();
 
@@ -94,10 +123,12 @@ export async function runTurn(deps, chat, type) {
                 companionRoom: companionStatus.location,
                 companionScene,
                 playerLocation: playerRoom,
+                playerDir,
+                companionDir,
             });
             setPrompt(block);
             if (deps.onNarratePlayerRoom) {
-                await deps.onNarratePlayerRoom({ playerRoom, outputs, cmds, msgIndex: player.index });
+                await deps.onNarratePlayerRoom({ playerRoom, outputs, cmds, msgIndex: player.index, companionDir });
             }
         }
         if (deps.debugLog && cmds.length) deps.debugLog({ outputs, status, cmds });

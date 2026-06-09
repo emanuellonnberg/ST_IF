@@ -122,46 +122,42 @@ function makeCompanionVM(room) {
     };
 }
 
-test('companion tracking off: companionVM never touched, no together computed', async () => {
+test('tracking off: companionVM untouched', async () => {
     const deps = makeDeps();
     deps.companionVM = makeCompanionVM('Cave');
-    deps.companionMove = async () => 'north';
-    deps.settings = { strictness: 'strict', injectStateOnRp: false, companionTracking: false };
+    deps.settings = { strictness: 'strict', injectStateOnRp: false, companionTracking: false, companionBias: 0.7 };
     await runTurn(deps, [{ is_user: true, mes: 'go north' }], 'normal');
     assert.deepEqual(deps.companionVM.steps, []);
 });
 
-test('together: companion in same room -> shared canon, together=true persisted', async () => {
-    const deps = makeDeps();
+test('glued (bias>=0.66): mirrors all player moves, stays together', async () => {
+    const deps = makeDeps({ translate: async () => ['north', 'west'] });
     deps.companionVM = makeCompanionVM('Cave');
-    deps.companionMove = async () => null;
-    deps.settings = { strictness: 'strict', injectStateOnRp: false, companionTracking: true };
-    await runTurn(deps, [{ is_user: true, mes: 'I wait' }], 'normal');
-    assert.match(deps._calls.setPrompt[0], /Cave/);
-    assert.doesNotMatch(deps._calls.setPrompt[0], /apart/i);
-    const { readTogether } = await import('../state.js');
-    assert.equal(readTogether(deps.metadata), true);
+    deps.settings = { strictness: 'strict', injectStateOnRp: false, companionTracking: true, companionBias: 0.8 };
+    await runTurn(deps, [{ is_user: true, mes: 'I go north then west' }], 'normal');
+    assert.deepEqual(deps.companionVM.steps, ['north', 'west'], 'companion replays both moves');
+    const { getFollowQueue } = await import('../state.js');
+    assert.deepEqual(getFollowQueue(deps.metadata), [], 'glued leaves no lag');
+    assert.match(deps._calls.setPrompt[0], /headed west/);
 });
 
-test('apart: companion moves to a different room -> apart canon, together=false', async () => {
-    const deps = makeDeps();
-    deps.companionVM = makeCompanionVM('Clearing');
-    deps.companionMove = async () => 'north';
-    deps.settings = { strictness: 'strict', injectStateOnRp: false, companionTracking: true };
-    await runTurn(deps, [{ is_user: true, mes: 'I dig' }], 'normal');
-    assert.deepEqual(deps.companionVM.steps, ['north']);
-    assert.match(deps._calls.setPrompt[0], /apart/i);
-    const { readTogether, getCompanionSnapshot } = await import('../state.js');
-    assert.equal(readTogether(deps.metadata), false);
-    assert.equal(getCompanionSnapshot(deps.metadata), 'CSNAP0');
+test('trail (mid bias): queues moves, consumes one per turn', async () => {
+    const deps = makeDeps({ translate: async () => ['north', 'west'] });
+    deps.companionVM = makeCompanionVM('Cave');
+    deps.settings = { strictness: 'strict', injectStateOnRp: false, companionTracking: true, companionBias: 0.5 };
+    await runTurn(deps, [{ is_user: true, mes: 'I go north then west' }], 'normal');
+    assert.deepEqual(deps.companionVM.steps, ['north'], 'only the first queued move is consumed');
+    const { getFollowQueue } = await import('../state.js');
+    assert.deepEqual(getFollowQueue(deps.metadata), ['west'], 'remaining move stays queued');
 });
 
-test('apart with no move: companion looks to describe its room', async () => {
-    const deps = makeDeps();
-    deps.companionVM = makeCompanionVM('Clearing');
-    deps.companionMove = async () => null;
-    deps.settings = { strictness: 'strict', injectStateOnRp: false, companionTracking: true };
-    await runTurn(deps, [{ is_user: true, mes: 'I dig' }], 'normal');
-    assert.deepEqual(deps.companionVM.steps, ['look']);
-    assert.match(deps._calls.setPrompt[0], /Clearing/);
+test('wander (bias<=0.33): uses the LLM decideMove, ignores player moves', async () => {
+    const deps = makeDeps({ translate: async () => ['north'] });
+    deps.companionVM = makeCompanionVM('Cave');
+    deps.companionMove = async () => 'south';
+    deps.settings = { strictness: 'strict', injectStateOnRp: false, companionTracking: true, companionBias: 0.2 };
+    await runTurn(deps, [{ is_user: true, mes: 'I go north' }], 'normal');
+    assert.deepEqual(deps.companionVM.steps, ['south'], 'companion wanders south, not following north');
+    const { getFollowQueue } = await import('../state.js');
+    assert.deepEqual(getFollowQueue(deps.metadata), [], 'wander does not queue');
 });
