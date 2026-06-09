@@ -100,3 +100,26 @@ test('setCompanion seeds the companion object on legacy state', () => {
     setCompanion(md, { snapshot: 'C', summary: null });
     assert.equal(getCompanionSnapshot(md), 'C');
 });
+
+import { getFollowQueue, setFollowQueue } from '../state.js';
+
+test('follow queue defaults to empty and round-trips', () => {
+    const md = {};
+    initState2(md, 'tiny.z5', 'SNAP0');
+    assert.deepEqual(getFollowQueue(md), []);
+    setFollowQueue(md, ['north', 'west']);
+    assert.deepEqual(getFollowQueue(md), ['north', 'west']);
+});
+
+test('setCompanion preserves an existing follow queue', () => {
+    const md = {};
+    initState2(md, 'tiny.z5', 'SNAP0');
+    setFollowQueue(md, ['south']);
+    setCompanion(md, { snapshot: 'CSNAP1', summary: { location: 'Cave' } });
+    assert.deepEqual(getFollowQueue(md), ['south'], 'queue survives a companion snapshot update');
+});
+
+test('getFollowQueue is empty for legacy companion without the field', () => {
+    const md = { ST_IF: { storyId: 'x', snapshot: 'P', summary: null, history: [], companion: { snapshot: 'C', summary: null } } };
+    assert.deepEqual(getFollowQueue(md), []);
+});

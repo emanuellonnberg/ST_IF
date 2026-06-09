@@ -10,7 +10,7 @@ export function readState(metadata) {
 export function initState(metadata, storyId, snapshot) {
     metadata[KEY] = {
         storyId, snapshot, summary: null, history: [],
-        companion: { snapshot, summary: null },
+        companion: { snapshot, summary: null, followQueue: [] },
         together: true,
     };
     return metadata[KEY];
@@ -25,7 +25,18 @@ export function getCompanionSnapshot(metadata) {
 export function setCompanion(metadata, { snapshot, summary }) {
     const s = metadata[KEY];
     if (!s) throw new Error('ST_IF state not initialized');
-    s.companion = { snapshot, summary: summary ?? null };
+    s.companion = { snapshot, summary: summary ?? null, followQueue: s.companion?.followQueue ?? [] };
+}
+
+export function getFollowQueue(metadata) {
+    return metadata[KEY]?.companion?.followQueue ?? [];
+}
+
+export function setFollowQueue(metadata, queue) {
+    const s = metadata[KEY];
+    if (!s) throw new Error('ST_IF state not initialized');
+    s.companion = s.companion ?? { snapshot: s.snapshot, summary: null };
+    s.companion.followQueue = Array.isArray(queue) ? queue : [];
 }
 
 export function setTogether(metadata, value) {
