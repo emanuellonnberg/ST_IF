@@ -79,6 +79,11 @@ separate from you. Enable **Companion location tracking** in the panel.
     direction).
 - When you separate, the canon names the departure direction — "{{user}} headed north as
   you parted", and the player-room note says "{{char}} has just left, heading <dir>".
+- **Companion can choose (agency)** — optional toggle. Off = the deterministic zones
+  above. On = the companion decides for itself each turn (follow you, hang back, or go
+  its own way), and the slider becomes its *clinginess lean*: high = sticks with you but
+  can break off when the scene calls for it, low = independent. Costs one extra LLM call
+  per turn; same "can't reunite from afar" limitation.
 - When you're in the **same room**, play is the normal shared scene.
 - When you're **apart**, the narrator grounds in the companion's room and does **not**
   know what you're doing elsewhere (real separation/reunion drama). Your own room is
