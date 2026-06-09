@@ -70,9 +70,15 @@ separate from you. Enable **Companion location tracking** in the panel.
 
 - The companion is a **position-only marker**: it moves around the same map but never
   takes or changes objects, so the two of you never desync the world.
-- Each turn a small LLM call decides whether the companion moves (one step) and which
-  way. The **"Companion stays near player"** slider biases this — high = tends to
-  follow you, low = wanders off.
+- The **"Companion stays near player"** slider sets one of three deterministic zones,
+  driven by your *actual* move directions (not a blind guess):
+  - **Glued** (≥ 0.66): the companion mirrors every move you make and stays in your room.
+  - **Trail** (0.34–0.65): it follows one room behind, consuming your moves one per turn —
+    so you briefly separate, then it catches up.
+  - **Wander** (≤ 0.33): it ignores you and roams on its own (a small LLM call picks a
+    direction).
+- When you separate, the canon names the departure direction — "{{user}} headed north as
+  you parted", and the player-room note says "{{char}} has just left, heading <dir>".
 - When you're in the **same room**, play is the normal shared scene.
 - When you're **apart**, the narrator grounds in the companion's room and does **not**
   know what you're doing elsewhere (real separation/reunion drama). Your own room is
@@ -83,8 +89,12 @@ Cost note: an *apart* turn can make up to four LLM calls (translate, companion i
 your-room narration, companion reply). It's opt-in and the companion starts beside you,
 so cost only grows when you deliberately separate.
 
-Limitation: the companion never manipulates world objects (position only); giving it
+Limitations: the companion never manipulates world objects (position only); giving it
 full independent play would desync the shared world (a Z-machine models one protagonist).
+Glued/Trail *keep* you together or trail an existing path — they do **not reunite from
+afar**: if you wander off and then crank the slider up while rooms apart, the companion
+can't navigate back (there's no learned map yet). It re-converges once you're adjacent
+again.
 
 ## Slash commands
 
