@@ -10,6 +10,8 @@ export const defaultSettings = {
     strictness: 'strict',
     depth: 1,
     showRawOutput: false,   // dev: surface raw VM output via toast
+    companionTracking: false,
+    companionBias: 0.7,     // 0 = wanders freely, 1 = stays glued to the player
     storyName: '',
     storyBase64: '',   // the .z5/.z8 bytes, base64
 };
@@ -54,6 +56,12 @@ export function wireSettingsUI(onStoryLoaded) {
     });
     $('#st_if_show_raw').prop('checked', s.showRawOutput).on('change', function () {
         s.showRawOutput = $(this).prop('checked'); saveSettingsDebounced();
+    });
+    $('#st_if_companion').prop('checked', s.companionTracking).on('change', function () {
+        s.companionTracking = $(this).prop('checked'); saveSettingsDebounced();
+    });
+    $('#st_if_bias').val(s.companionBias).on('input', function () {
+        s.companionBias = Number($(this).val()); saveSettingsDebounced();
     });
     $('#st_if_strictness').val(s.strictness).on('change', function () {
         s.strictness = String($(this).val()); saveSettingsDebounced();

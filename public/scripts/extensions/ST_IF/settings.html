@@ -20,6 +20,14 @@
                 <span>Show raw game output (debug)</span>
             </label>
 
+            <label class="checkbox_label">
+                <input id="st_if_companion" type="checkbox" />
+                <span>Companion location tracking</span>
+            </label>
+
+            <label for="st_if_bias">Companion stays near player</label>
+            <input id="st_if_bias" type="range" min="0" max="1" step="0.1" class="text_pole" />
+
             <label for="st_if_strictness">Translator strictness</label>
             <select id="st_if_strictness" class="text_pole">
                 <option value="strict">Strict (only clear actions)</option>

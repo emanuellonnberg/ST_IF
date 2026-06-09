@@ -9,11 +9,13 @@ import { ARGUMENT_TYPE, SlashCommandArgument } from '../../slash-commands/SlashC
 
 import { IFVM } from './vm.js';
 import { translate } from './translator.js';
+import { decideMove } from './companion.js';
 import { runTurn } from './turn.js';
-import { readState, initState, getActiveSnapshot, rewindTo, KEY } from './state.js';
+import { readState, initState, getActiveSnapshot, rewindTo, KEY, setCompanion, getCompanionSnapshot } from './state.js';
 import { loadSettings, getSettings, wireSettingsUI, base64ToBytes } from './settings.js';
 
 const vm = new IFVM();
+const companionVM = new IFVM();
 
 function buildDeps() {
     const ctx = getContext();
@@ -29,7 +31,11 @@ function buildDeps() {
         clearPrompt: () =>
             setExtensionPrompt(KEY, '', extension_prompt_types.NONE, 0),
         save: () => saveMetadataDebounced(),
-        settings: { strictness: s.strictness, injectStateOnRp: s.injectStateOnRp },
+        settings: { strictness: s.strictness, injectStateOnRp: s.injectStateOnRp, companionTracking: s.companionTracking },
+        companionVM,
+        companionMove: (playerText, playerRoom, companionRoom) =>
+            decideMove(playerText, playerRoom, companionRoom, getSettings().companionBias,
+                (prompt) => generateQuietPrompt({ quietPrompt: prompt, responseLength: 40, skipWIAN: true })),
         debugLog: s.showRawOutput
             ? ({ outputs, cmds }) => toastr.info(
                 (outputs.join('\n') || '(no output)'),
@@ -72,6 +78,18 @@ async function ensureStoryLoaded() {
         // Resume: restore this chat's canonical snapshot.
         const snap = getActiveSnapshot(ctx.chatMetadata);
         if (snap) vm.restore(snap);
+    }
+
+    // Companion VM mirrors the same story; seed/restore its own position.
+    if (!companionVM.loaded) await companionVM.load(base64ToBytes(s.storyBase64));
+    const st = readState(ctx.chatMetadata);
+    if (st) {
+        const csnap = getCompanionSnapshot(ctx.chatMetadata);
+        if (csnap) companionVM.restore(csnap);
+        if (!st.companion) {
+            setCompanion(ctx.chatMetadata, { snapshot: companionVM.save(), summary: companionVM.getStatus() });
+            saveMetadataDebounced();
+        }
     }
 }
 
@@ -136,6 +154,8 @@ jQuery(async () => {
         const s = getSettings();
         await vm.load(base64ToBytes(s.storyBase64));
         initState(ctx.chatMetadata, name, vm.save());
+        await companionVM.load(base64ToBytes(s.storyBase64));
+        setCompanion(ctx.chatMetadata, { snapshot: companionVM.save(), summary: companionVM.getStatus() });
         saveMetadataDebounced();
         showIntroIfDebug();
     });
