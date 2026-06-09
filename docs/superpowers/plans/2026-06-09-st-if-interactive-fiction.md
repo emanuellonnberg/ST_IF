@@ -1200,8 +1200,22 @@ Investigated ifvms 1.1.6 during Task 1. Findings:
 
 Execution order is now: Task 1 skeleton + `vm.js` stub → Tasks 2,3,4,5,6 → Glk harness spike (Task 1 Steps 4-9) → Task 7 → Task 8.
 
+## Glk harness spike — COMPLETE (2026-06-09)
+
+The spike succeeded; `vm.js` is real (not a stub) and the VM integration test passes (5/5) against a bundled Colossal Cave Adventure (`test/fixtures/Advent.z5`, public domain, Z5).
+
+How it works:
+- **Vendored, ESM-wrapped, into `lib/`** (all permissive licenses): `glkapi.js` (MIT) as a `createGlk()` factory returning a fresh Glk per call; `zvm.js` (ifvms dist UMD, BSD) as a default ZVM export; `dispatch.js` (BSD) as the `ZVMDispatch` (GiDispa) export. A generator wraps the CommonJS/UMD sources as ESM.
+- **Strict-mode gotcha:** glkapi has accidental globals (`Glk, ch, content_box, fref, ix, lineobj, lx, split`) assigned without `var`; sloppy CJS tolerated them, strict ESM does not. Detected via `eslint --rule no-undef` and declared in the factory wrapper. (zvm dist only references `define` inside a `typeof` guard — safe; dispatch is clean.)
+- **`vm.js`** supplies an in-memory `HeadlessGlkOte` (captures buffer text + grid/status rows, feeds line input synchronously) and a `HeadlessDialog` (captures the autosave snapshot in memory). The glkapi↔GlkOte↔VM flow is synchronous, so `step(cmd)` is synchronous.
+- **Snapshots:** `vm.save()` calls ZVM `do_autosave` → captures `{glk, io, ram, read_data, xorshift_seed}` via the Dialog → `base64(JSON.stringify(...))`. `vm.restore()` boots a fresh Glk+VM with `do_vm_autosave` and the snapshot. JSON round-trip restore reproduces identical next-step output (verified).
+- **Status line** parses `Location … Score: N … Moves: N` (split on 2+ spaces; regex for score/moves) — matching the spec-refinement state block.
+
+**VM-location decision RESOLVED:** client-side. The browser path is viable with vendored libs; no server plugin needed.
+
 ## Open items carried from the spec
 
 - ~~Install path~~ RESOLVED: `public/scripts/extensions/ST_IF/` (committable, auto-discovered).
-- Pin the exact ifvms ZVM + headless Glk wiring during the Glk harness spike (deferred per reorder above).
+- ~~Pin the ifvms ZVM + headless Glk wiring~~ RESOLVED: see "Glk harness spike — COMPLETE" above.
+- Browser-runtime validation of `vm.js` (the lib loads as ESM imports in a browser too, but real in-app behaviour is confirmed in the Task 7 manual checklist).
 - Post-v1 (explicitly out of scope here): LLM adjudication of VM failures, retry-translation, auto-sync on edit/delete, synthetic exits/inventory via auto `look`/`inventory`, Glulx, multi-game, map rendering.
