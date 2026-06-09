@@ -18,7 +18,7 @@ The approved spec ([2026-06-09-st-if-interactive-fiction-design.md](../specs/202
 
 ## File structure
 
-All paths under `public/scripts/extensions/third-party/ST_IF/` unless noted. (Open item from spec: for a bundled-in-fork build this may move under `public/scripts/extensions/ST_IF/` + the extensions manifest — resolved in Task 1. Plan assumes `third-party/` install, which is the standard third-party extension path and works against an unmodified core.)
+**RESOLVED (Task 1):** All paths under `public/scripts/extensions/ST_IF/`. The server `/discover` endpoint treats every directory under `public/scripts/extensions/` except `third-party/` as a built-in "system" extension, so this path is auto-discovered. Crucially, `third-party/` is gitignored but `ST_IF/` is not — this path commits into the fork, which is the goal. Template render therefore uses module name `'ST_IF'` (not `'third-party/ST_IF'`).
 
 | File | Responsibility | ST runtime coupling |
 |------|----------------|---------------------|
@@ -1185,8 +1185,22 @@ git commit -m "docs(ST_IF): add extension README"
 - **Integration-tested:** `vm.js` against a real `.z5` (load, step, status, save/restore round-trip).
 - **Manually verified (needs ST runtime):** manifest load, settings panel + persistence, story upload, the six end-to-end behaviors, slash commands.
 
+## Spike findings (2026-06-09) and execution reorder
+
+Investigated ifvms 1.1.6 during Task 1. Findings:
+
+- **ifvms is MIT licensed** (source headers + README), not GPL. The spec's licensing concern was wrong — vendoring is unrestricted.
+- **Clean snapshot API exists:** `do_autosave(save)` builds a plain state object `{glk: Glk.save_allstate(), io, ram, read_data, xorshift_seed}` and hands it to `Dialog.autosave_write(signature, snapshot)`; `do_autorestore(snapshot)` reverses it. So `vm.save()`/`vm.restore()` are feasible via a custom in-memory Dialog.
+- **The hard part:** ZVM renders no text itself — it drives a full Glk (glkapi) → GlkOte display + Dialog. The reference runner uses `glkote-term`, which is **node-only** (`fs`/`readline`/stdout) and cannot run in the browser. A client-side wrapper therefore needs a vendored browser-compatible `glkapi.js` + a custom headless GlkOte (~200 lines) + a Dialog stub. This is a sub-project, not a bite-sized step.
+
+**Decisions (user, 2026-06-09):**
+1. **Reorder execution:** implement Tasks 2-6 (pure, unit-testable modules) first against the defined `vm.js` interface; `vm.js` stays a stub. Then tackle the Glk harness as an isolated spike (Task 1 Steps 4-9).
+2. **VM location decided during harness build:** start the harness as shared pure-JS (node + browser); if bundling `glkapi.js` for the browser proves painful, fall back to a server-side ST plugin exposing step/status/save over an endpoint.
+
+Execution order is now: Task 1 skeleton + `vm.js` stub → Tasks 2,3,4,5,6 → Glk harness spike (Task 1 Steps 4-9) → Task 7 → Task 8.
+
 ## Open items carried from the spec
 
-- Confirm the `third-party/ST_IF/` install path vs a bundled-in-fork path (Task 1, Step 3 will reveal which the fork uses).
-- Pin the exact ifvms ZVM + headless Glk wiring during the Task 1 spike.
+- ~~Install path~~ RESOLVED: `public/scripts/extensions/ST_IF/` (committable, auto-discovered).
+- Pin the exact ifvms ZVM + headless Glk wiring during the Glk harness spike (deferred per reorder above).
 - Post-v1 (explicitly out of scope here): LLM adjudication of VM failures, retry-translation, auto-sync on edit/delete, synthetic exits/inventory via auto `look`/`inventory`, Glulx, multi-game, map rendering.
