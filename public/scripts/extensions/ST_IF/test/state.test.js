@@ -123,3 +123,17 @@ test('getFollowQueue is empty for legacy companion without the field', () => {
     const md = { ST_IF: { storyId: 'x', snapshot: 'P', summary: null, history: [], companion: { snapshot: 'C', summary: null } } };
     assert.deepEqual(getFollowQueue(md), []);
 });
+
+import { getRoomDescription, setRoomDescription } from '../state.js';
+
+test('roomDescription round-trips and defaults to empty', () => {
+    const md = {};
+    initState2(md, 'tiny.z5', 'SNAP0');
+    assert.equal(getRoomDescription(md), '');
+    setRoomDescription(md, 'A dark cave. Exits lead north.');
+    assert.equal(getRoomDescription(md), 'A dark cave. Exits lead north.');
+});
+
+test('getRoomDescription is empty for legacy state without the field', () => {
+    assert.equal(getRoomDescription({ ST_IF: { storyId: 'x', snapshot: 'P', summary: null, history: [] } }), '');
+});

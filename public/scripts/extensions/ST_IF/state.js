@@ -28,6 +28,16 @@ export function setCompanion(metadata, { snapshot, summary }) {
     s.companion = { snapshot, summary: summary ?? null, followQueue: s.companion?.followQueue ?? [] };
 }
 
+export function getRoomDescription(metadata) {
+    return metadata[KEY]?.roomDescription ?? '';
+}
+
+export function setRoomDescription(metadata, text) {
+    const s = metadata[KEY];
+    if (!s) throw new Error('ST_IF state not initialized');
+    s.roomDescription = String(text ?? '');
+}
+
 export function getFollowQueue(metadata) {
     return metadata[KEY]?.companion?.followQueue ?? [];
 }
