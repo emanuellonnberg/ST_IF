@@ -197,3 +197,50 @@ test('agency off: zone logic runs, companionDecide is never called', async () =>
     await runTurn(deps, [{ is_user: true, mes: 'I go north then west' }], 'normal');
     assert.deepEqual(deps.companionVM.steps, ['north'], 'trail zone consumed one move');
 });
+
+function makeMovingVM() {
+    const DIRS = ['north', 'south', 'east', 'west', 'up', 'down'];
+    return {
+        loaded: true, _snap: 'S', room: 'Start', steps: [],
+        step(cmd) {
+            this.steps.push(cmd);
+            if (DIRS.includes(cmd)) { this.room = cmd; return `You go ${cmd}. A new place called ${cmd}.`; }
+            if (cmd === 'look') return `You are at ${this.room}. Exits lead away.`;
+            return `You ${cmd}.`;
+        },
+        save() { return this._snap; },
+        restore(s) { this._snap = s; },
+        getStatus() { return { location: this.room, score: 0, moves: 0 }; },
+    };
+}
+
+test('captures room description when the player changes rooms', async () => {
+    const deps = makeDeps({ translate: async () => ['north'], vm: makeMovingVM() });
+    await runTurn(deps, [{ is_user: true, mes: 'go north' }], 'normal');
+    const { getRoomDescription } = await import('../state.js');
+    assert.match(getRoomDescription(deps.metadata), /A new place called north/);
+});
+
+test('captures room description on a look command', async () => {
+    const deps = makeDeps({ translate: async () => ['look'], vm: makeMovingVM() });
+    await runTurn(deps, [{ is_user: true, mes: 'look' }], 'normal');
+    const { getRoomDescription } = await import('../state.js');
+    assert.match(getRoomDescription(deps.metadata), /You are at Start/);
+});
+
+test('does not overwrite room description on a non-move, non-look action', async () => {
+    const deps = makeDeps({ translate: async () => ['north'], vm: makeMovingVM() });
+    await runTurn(deps, [{ is_user: true, mes: 'go north' }], 'normal');
+    deps.translate = async () => ['take lamp'];
+    await runTurn(deps, [{ is_user: true, mes: 'take lamp' }], 'normal');
+    const { getRoomDescription } = await import('../state.js');
+    assert.match(getRoomDescription(deps.metadata), /A new place called north/, 'kept the room desc through a take');
+});
+
+test('together-branch canon includes the companion-present line', async () => {
+    const deps = makeDeps({ translate: async () => ['take lamp'] });
+    deps.companionVM = makeCompanionVM('Cave');
+    deps.settings = { strictness: 'strict', injectStateOnRp: false, companionTracking: true, companionBias: 0.8 };
+    await runTurn(deps, [{ is_user: true, mes: 'take the lamp' }], 'normal');
+    assert.match(deps._calls.setPrompt[0], /here with you/);
+});

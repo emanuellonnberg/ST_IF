@@ -1,5 +1,5 @@
 // turn.js — orchestrate one chat turn. Pure: all ST/VM deps injected.
-import { readState, recordTurn, getActiveSnapshot, setCompanion, setTogether, getFollowQueue, setFollowQueue } from './state.js';
+import { readState, recordTurn, getActiveSnapshot, setCompanion, setTogether, getFollowQueue, setFollowQueue, setRoomDescription } from './state.js';
 import { translate as translateDefault } from './translator.js';
 import { extractMoves, zone } from './companion.js';
 import { buildCanonBlock, buildApartCanonBlock } from './canon.js';
@@ -58,6 +58,14 @@ export async function runTurn(deps, chat, type) {
     const outputs = [];
     for (const cmd of cmds) outputs.push(vm.step(cmd));
     const status = vm.getStatus();
+
+    // Capture the current room description for the persistent display:
+    // update on a room change (the move output IS the new room) or an explicit look.
+    const movedRoom = status.location !== statusForPrompt.location;
+    const lookish = cmds.some((c) => /^(look|l|examine room)$/i.test(String(c).trim()));
+    if ((movedRoom || lookish) && outputs.length) {
+        setRoomDescription(metadata, outputs[outputs.length - 1]);
+    }
 
     // 6. PERSIST canonical snapshot + history (store outputs for swipe reuse).
     const snapshot = vm.save();
@@ -130,7 +138,7 @@ export async function runTurn(deps, chat, type) {
         save();
 
         if (together) {
-            const block = buildCanonBlock({ outputs, status, ranCommands: cmds.length > 0, injectStateOnRp: settings.injectStateOnRp });
+            const block = buildCanonBlock({ outputs, status, ranCommands: cmds.length > 0, injectStateOnRp: settings.injectStateOnRp, companionPresent: true });
             if (block) setPrompt(block);
         } else {
             const block = buildApartCanonBlock({
