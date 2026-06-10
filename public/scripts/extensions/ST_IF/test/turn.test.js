@@ -244,3 +244,24 @@ test('together-branch canon includes the companion-present line', async () => {
     await runTurn(deps, [{ is_user: true, mes: 'take the lamp' }], 'normal');
     assert.match(deps._calls.setPrompt[0], /here with you/);
 });
+
+test('together: companion VM syncs to the player snapshot (shares world)', async () => {
+    const deps = makeDeps({ translate: async () => ['take lamp'] });   // action, no movement
+    deps.companionVM = makeCompanionVM('Cave');                        // same room as player
+    deps.settings = { strictness: 'strict', injectStateOnRp: false, companionTracking: true, companionBias: 0.8 };
+    await runTurn(deps, [{ is_user: true, mes: 'take lamp' }], 'normal');
+    const { getCompanionSnapshot, readTogether } = await import('../state.js');
+    assert.equal(readTogether(deps.metadata), true);
+    assert.equal(getCompanionSnapshot(deps.metadata), deps.vm.save(), 'companion snapshot == player snapshot');
+    assert.equal(deps.companionVM._snap, deps.vm.save(), 'companion VM restored to the player world');
+});
+
+test('apart: companion keeps its own snapshot (not synced to player)', async () => {
+    const deps = makeDeps({ translate: async () => ['take lamp'] });   // no movement
+    deps.companionVM = makeCompanionVM('Clearing');                    // different room → apart
+    deps.settings = { strictness: 'strict', injectStateOnRp: false, companionTracking: true, companionBias: 0.8 };
+    await runTurn(deps, [{ is_user: true, mes: 'take lamp' }], 'normal');
+    const { getCompanionSnapshot, readTogether } = await import('../state.js');
+    assert.equal(readTogether(deps.metadata), false);
+    assert.equal(getCompanionSnapshot(deps.metadata), 'CSNAP0', 'companion keeps its own world');
+});

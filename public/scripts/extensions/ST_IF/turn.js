@@ -132,7 +132,14 @@ export async function runTurn(deps, chat, type) {
         const companionStatus = companionVM.getStatus();
         const together = playerRoom === companionStatus.location;
 
-        setCompanion(metadata, { snapshot: companionVM.save(), summary: companionStatus });
+        if (together) {
+            // While together, the companion shares the player's world (inherits puzzle
+            // progress — unlocked doors, taken items); sync its VM to the player's snapshot.
+            companionVM.restore(snapshot);
+            setCompanion(metadata, { snapshot, summary: companionVM.getStatus() });
+        } else {
+            setCompanion(metadata, { snapshot: companionVM.save(), summary: companionStatus });
+        }
         setFollowQueue(metadata, queue);
         setTogether(metadata, together);
         save();
