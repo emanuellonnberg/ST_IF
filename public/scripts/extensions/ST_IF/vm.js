@@ -194,6 +194,11 @@ export class IFVM {
     async load(bytes) {
         this._story = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
         this._boot(this._story, null);
+        // Force VERBOSE mode so re-entering a visited room still prints the full
+        // description (Z-machine defaults to BRIEF: name-only on return). The
+        // confirmation ("Maximum verbosity.") is discarded; the intro was already
+        // captured during _boot.
+        try { this.step('verbose'); } catch { /* game without a verbose verb — ignore */ }
     }
 
     /** The opening scene text captured at load (empty after a restore). */

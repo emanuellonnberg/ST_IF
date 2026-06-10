@@ -77,3 +77,15 @@ test('save/restore round-trips through base64 JSON and reproduces next-step outp
 
     assert.equal(afterEast2, afterEast1, 'restored VM reproduces identical next-step output');
 });
+
+const zork = new Uint8Array(readFileSync(new URL('./fixtures/zork1-r88-s840726.z3', import.meta.url)));
+
+test('forces verbose so re-entering a visited room prints the full description', async () => {
+    const vm = new IFVM();
+    await vm.load(zork);
+    // The house perimeter loops back to West of House (already visited at start).
+    vm.step('north'); vm.step('east'); vm.step('south');
+    const back = vm.step('west');   // re-enter West of House
+    assert.match(back, /open field|white house/i, 'full description on return');
+    assert.ok(back.trim().length > 90, 'not the brief name-only form');
+});
