@@ -18,7 +18,7 @@ export function buildCanonBlock({ outputs, status, ranCommands, injectStateOnRp,
     }
     const result = outputs.join('\n').trim();
     const lines = [
-        '[GAME — canon ground truth. Stay in character as {{char}}: react, speak, and act within this setting. The game text is the setting, not your reply — don\'t just describe the room.]',
+        '[GAME — canon ground truth; never contradict it. The "Action result" below is exactly what happened — honor it, including failures (if it didn\'t work, it didn\'t work, and {{char}} sees that). Stay in character as {{char}}: react, speak, and act — and weave the room\'s details (exits, objects, mood) into the scene through {{char}}\'s eyes. Don\'t omit the setting; don\'t just transcribe it.]',
         `Action result: ${result}`,
         statusLine(status),
     ];

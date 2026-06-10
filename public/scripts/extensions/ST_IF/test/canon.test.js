@@ -100,3 +100,11 @@ test('companionPresent adds the presence line', () => {
     const b = buildCanonBlock({ outputs: ['You go north.'], status: { location: 'Cave', score: 0, moves: 1 }, ranCommands: true, injectStateOnRp: false, companionPresent: true });
     assert.match(b, /\{\{char\}\} is here with you/);
 });
+
+test('canon honors failures and keeps the setting (never contradict)', () => {
+    const b = buildCanonBlock({ outputs: ['You\'ll have to unlock it first.'], status: { location: 'Patio', score: 0, moves: 3 }, ranCommands: true, injectStateOnRp: false });
+    assert.match(b, /never contradict/i);
+    assert.match(b, /fail/i);
+    assert.match(b, /weave/i);
+    assert.match(b, /You'll have to unlock it first\./);
+});
