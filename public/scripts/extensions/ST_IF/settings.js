@@ -1,6 +1,12 @@
 // settings.js — extension_settings.ST_IF defaults, UI wiring, story upload to base64.
 import { extension_settings } from '../../extensions.js';
 import { saveSettingsDebounced } from '../../../script.js';
+import { zone } from './companion.js';
+
+function updateBiasLabel(value) {
+    const el = document.getElementById('st_if_bias_value');
+    if (el) el.textContent = `${Number(value).toFixed(1)} — ${zone(value)}`;
+}
 
 export const MODULE = 'ST_IF';
 
@@ -62,8 +68,9 @@ export function wireSettingsUI(onStoryLoaded) {
         s.companionTracking = $(this).prop('checked'); saveSettingsDebounced();
     });
     $('#st_if_bias').val(s.companionBias).on('input', function () {
-        s.companionBias = Number($(this).val()); saveSettingsDebounced();
+        s.companionBias = Number($(this).val()); updateBiasLabel(s.companionBias); saveSettingsDebounced();
     });
+    updateBiasLabel(s.companionBias);
     $('#st_if_agency').prop('checked', s.companionAgency).on('change', function () {
         s.companionAgency = $(this).prop('checked'); saveSettingsDebounced();
     });
