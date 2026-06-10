@@ -108,3 +108,11 @@ test('canon honors failures and keeps the setting (never contradict)', () => {
     assert.match(b, /weave/i);
     assert.match(b, /You'll have to unlock it first\./);
 });
+
+test('apart block forcefully states separation and forbids reacting to the user', () => {
+    const b = buildApartCanonBlock({ companionRoom: 'Cellar', companionScene: 'Dust.', playerLocation: 'Hall', playerDir: null, companionDir: null });
+    assert.match(b, /NOT with \{\{user\}\}/);
+    assert.match(b, /must NOT react/i);
+    assert.match(b, /alone at: Cellar/);
+    assert.match(b, /ONLY what \{\{char\}\} does/);
+});

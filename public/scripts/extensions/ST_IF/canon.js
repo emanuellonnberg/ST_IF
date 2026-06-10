@@ -33,13 +33,13 @@ export function buildCanonBlock({ outputs, status, ranCommands, injectStateOnRp,
  */
 export function buildApartCanonBlock({ companionRoom, companionScene, playerLocation, playerDir, companionDir }) {
     const lines = [
-        '[GAME — ground truth. You ({{char}}) are on your own, apart from {{user}}.]',
-        `You are at: ${companionRoom}.`,
+        '[GAME — IMPORTANT. {{char}} is NOT with {{user}} right now; you are apart, in different places. {{user}}\'s last message is something they do ELSEWHERE — {{char}} cannot see or hear it and must NOT react to it or appear in that scene.]',
+        `{{char}} is alone at: ${companionRoom}.`,
     ];
     if (companionScene && companionScene.trim()) lines.push(companionScene.trim());
     if (companionDir) lines.push(`You headed ${companionDir}, leaving {{user}} behind.`);
     if (playerDir) lines.push(`{{user}} headed ${playerDir} as you parted.`);
-    lines.push(`You do not know what {{user}} is doing; you last saw them near ${playerLocation}.`);
-    lines.push('Narrate only your own situation, in character. Do not describe {{user}}\'s actions.');
+    lines.push(`You last saw {{user}} moving toward ${playerLocation}; you do not know what they are doing now.`);
+    lines.push('Write ONLY what {{char}} does alone here, in character. Do not address {{user}} as if present, and do not narrate {{user}}\'s actions.');
     return lines.join('\n');
 }
