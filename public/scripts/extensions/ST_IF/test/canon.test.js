@@ -86,3 +86,17 @@ test('apart block omits direction lines when dirs are null', () => {
     });
     assert.doesNotMatch(block, /headed/);
 });
+
+test('action canon is character-forward and omits the companion line by default', () => {
+    const b = buildCanonBlock({ outputs: ['You go north.'], status: { location: 'Cave', score: 0, moves: 1 }, ranCommands: true, injectStateOnRp: false });
+    assert.match(b, /in character/i);
+    assert.match(b, /setting/i);
+    assert.match(b, /ground truth/i);
+    assert.match(b, /Action result: You go north\./);
+    assert.doesNotMatch(b, /here with you/i);
+});
+
+test('companionPresent adds the presence line', () => {
+    const b = buildCanonBlock({ outputs: ['You go north.'], status: { location: 'Cave', score: 0, moves: 1 }, ranCommands: true, injectStateOnRp: false, companionPresent: true });
+    assert.match(b, /\{\{char\}\} is here with you/);
+});
