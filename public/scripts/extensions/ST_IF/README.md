@@ -56,7 +56,16 @@ chat forks the game state with it.
 - **Translator strictness** — *Strict* fires only on clear physical actions (the
   game stays invisible until you act); *Loose* maps more verbs.
 - **Canon injection depth** — how deep in the chat the canon block is injected.
+- **Current room** — a persistent read-only box in the drawer showing your location,
+  the room's prose (which names exits/items), and score/moves. It updates when you
+  move or `look`, keeps the description through non-move actions (e.g. `take`), and
+  survives reloads — unlike the transient debug toast.
 - **Companion location tracking** — give `{{char}}` its own location (see below).
+
+The narration is **character-forward**: the game text is treated as the *setting*, and
+`{{char}}` reacts, speaks, and acts within it (rather than the narrator transcribing the
+room and dropping the character). When you and the companion are together, `{{char}}` is
+kept present in the scene.
 - **Companion stays near player** — how strongly the companion follows you vs wanders.
 - **Show raw game output (debug)** — when on, the raw VM output of each action
   (and the opening scene on load) is surfaced as a toast. The default is

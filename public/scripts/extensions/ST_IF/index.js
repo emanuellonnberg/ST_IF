@@ -11,7 +11,7 @@ import { IFVM } from './vm.js';
 import { translate } from './translator.js';
 import { decideMove, decideAgency } from './companion.js';
 import { runTurn } from './turn.js';
-import { readState, initState, getActiveSnapshot, rewindTo, KEY, setCompanion, getCompanionSnapshot } from './state.js';
+import { readState, initState, getActiveSnapshot, rewindTo, KEY, setCompanion, getCompanionSnapshot, getRoomDescription, setRoomDescription } from './state.js';
 import { loadSettings, getSettings, wireSettingsUI, base64ToBytes } from './settings.js';
 import { stripReasoning } from './clean.js';
 
@@ -87,6 +87,21 @@ function postComment(text) {
     if (typeof ctx.saveChat === 'function') ctx.saveChat();
 }
 
+/** Update the persistent "Current room" box from this chat's state. */
+function renderRoomPanel() {
+    const el = document.getElementById('st_if_room');
+    if (!el) return;
+    const ctx = getContext();
+    const s = readState(ctx.chatMetadata);
+    if (!s) { el.textContent = '(no game loaded)'; return; }
+    const loc = s.summary?.location ?? '?';
+    const desc = getRoomDescription(ctx.chatMetadata);
+    const bits = [];
+    if (s.summary?.score !== null && s.summary?.score !== undefined) bits.push(`Score ${s.summary.score}`);
+    if (s.summary?.moves !== null && s.summary?.moves !== undefined) bits.push(`Moves ${s.summary.moves}`);
+    el.textContent = `${loc}${desc ? `\n\n${desc}` : ''}${bits.length ? `\n\n${bits.join(' · ')}` : ''}`;
+}
+
 /** Dev-mode: surface the opening scene as a toast when "Show raw game output" is on. */
 function showIntroIfDebug() {
     if (getSettings()?.showRawOutput && vm.loaded) {
@@ -101,6 +116,7 @@ globalThis.ST_IF_interceptor = async function (chat, _contextSize, _abort, type)
     if (!s || !s.enabled) return;
     try {
         await runTurn(buildDeps(), chat, type);
+        renderRoomPanel();
     } catch (e) {
         console.error('[ST_IF] interceptor error', e);
     }
@@ -114,6 +130,8 @@ async function ensureStoryLoaded() {
     const ctx = getContext();
     if (!readState(ctx.chatMetadata)) {
         initState(ctx.chatMetadata, s.storyName, vm.save());
+        readState(ctx.chatMetadata).summary = vm.getStatus();   // so the room panel shows location immediately
+        setRoomDescription(ctx.chatMetadata, vm.getIntro());
         saveMetadataDebounced();
         showIntroIfDebug();
     } else {
@@ -133,6 +151,8 @@ async function ensureStoryLoaded() {
             saveMetadataDebounced();
         }
     }
+
+    renderRoomPanel();
 }
 
 /** /if-cmd advances the VM outside the turn pipeline; persist the new snapshot. */
@@ -196,13 +216,17 @@ jQuery(async () => {
         const s = getSettings();
         await vm.load(base64ToBytes(s.storyBase64));
         initState(ctx.chatMetadata, name, vm.save());
+        readState(ctx.chatMetadata).summary = vm.getStatus();
+        setRoomDescription(ctx.chatMetadata, vm.getIntro());
         await companionVM.load(base64ToBytes(s.storyBase64));
         setCompanion(ctx.chatMetadata, { snapshot: companionVM.save(), summary: companionVM.getStatus() });
         saveMetadataDebounced();
         showIntroIfDebug();
+        renderRoomPanel();
     });
     registerSlashCommands();
     eventSource.on(event_types.CHAT_CHANGED, ensureStoryLoaded);
     await ensureStoryLoaded();
+    renderRoomPanel();
     console.log('[ST_IF] ready');
 });
