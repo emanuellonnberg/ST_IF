@@ -28,8 +28,10 @@ function buildDeps() {
         translate: (text, status, strictness) =>
             translate(text, status, strictness, (prompt) =>
                 generateQuietPrompt({ quietPrompt: prompt, responseLength: 80, skipWIAN: true })),
-        setPrompt: (block) =>
-            setExtensionPrompt(KEY, block, extension_prompt_types.IN_CHAT, getSettings().depth, false, extension_prompt_roles.SYSTEM),
+        setPrompt: (block) => {
+            console.debug('[ST_IF] canon injected:\n' + block);
+            setExtensionPrompt(KEY, block, extension_prompt_types.IN_CHAT, getSettings().depth, false, extension_prompt_roles.SYSTEM);
+        },
         clearPrompt: () =>
             setExtensionPrompt(KEY, '', extension_prompt_types.NONE, 0),
         save: () => saveMetadataDebounced(),

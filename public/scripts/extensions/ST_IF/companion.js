@@ -12,10 +12,11 @@ export function detectShout(text) {
     return /\b(shout|yell|scream|holler|bellow|call(s|ed|ing)? out|cr(y|ies|ied) out)/i.test(String(text ?? ''));
 }
 
-/** Pull the compass-direction commands out of a translated command list, in order. */
+/** Pull the compass-direction commands out of a translated command list, in order.
+ *  Accepts bare directions and "go/walk/run/head/move/climb <dir>" forms. */
 export function extractMoves(cmds) {
     return (cmds || [])
-        .map((c) => String(c).trim().toLowerCase())
+        .map((c) => String(c).trim().toLowerCase().replace(/^(?:go|walk|run|head|move|climb)\s+/, ''))
         .filter((c) => DIRECTIONS.has(c));
 }
 

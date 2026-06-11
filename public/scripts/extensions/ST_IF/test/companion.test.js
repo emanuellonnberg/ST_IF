@@ -113,3 +113,11 @@ test('detectShout ignores quiet actions', () => {
     assert.equal(detectShout(''), false);
     assert.equal(detectShout(null), false);
 });
+
+test('extractMoves normalizes "go/walk/head <dir>" command forms', () => {
+    assert.deepEqual(extractMoves(['go east']), ['east']);
+    assert.deepEqual(extractMoves(['walk north', 'take lamp']), ['north']);
+    assert.deepEqual(extractMoves(['head sw']), ['sw']);
+    assert.deepEqual(extractMoves(['climb up']), ['up']);
+    assert.deepEqual(extractMoves(['go to the house']), [], 'non-direction stays dropped');
+});
