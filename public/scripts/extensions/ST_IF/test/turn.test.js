@@ -305,3 +305,49 @@ test('apart turn with a shout passes the audible cue into the canon', async () =
     assert.match(deps._calls.setPrompt[0], /DO hear/i);
     assert.match(deps._calls.setPrompt[0], /did not say or do/i);
 });
+
+test('apart: rewrites the last user message in the prompt copy to out-of-sight', async () => {
+    const deps = makeDeps({ translate: async () => ['pull sword'] });
+    deps.companionVM = makeCompanionVM('Clearing');
+    deps.companionMove = async () => null;
+    deps.settings = { strictness: 'strict', injectStateOnRp: false, companionTracking: true, companionBias: 0.2 };
+    const chat = [{ is_user: true, mes: '*pull sword*' }];
+    await runTurn(deps, chat, 'normal');
+    assert.doesNotMatch(chat[0].mes, /pull sword/, 'action hidden from the companion prompt');
+    assert.match(chat[0].mes, /somewhere else|out of .*sight/i);
+});
+
+test('apart shout: rewrites the message into a heard shout with direction', async () => {
+    const deps = makeDeps({ translate: async () => ['shout'] });
+    deps.companionVM = makeCompanionVM('Clearing');
+    deps.companionMove = async () => null;
+    deps.settings = { strictness: 'strict', injectStateOnRp: false, companionTracking: true, companionBias: 0.2 };
+    const { recordMapEdge } = await import('../state.js');
+    recordMapEdge(deps.metadata, 'Clearing', 'south', 'Cave');   // companion room -> player room edge
+    const chat = [{ is_user: true, mes: '*shout* "Hello, can you hear me!"' }];
+    await runTurn(deps, chat, 'normal');
+    assert.match(chat[0].mes, /hear.*shout/i);
+    assert.match(chat[0].mes, /Hello, can you hear me!/, 'the shouted words carry');
+    assert.match(chat[0].mes, /south/, 'direction included when known');
+});
+
+test('together: the user message is left untouched', async () => {
+    const deps = makeDeps({ translate: async () => ['take lamp'] });
+    deps.companionVM = makeCompanionVM('Cave');
+    deps.settings = { strictness: 'strict', injectStateOnRp: false, companionTracking: true, companionBias: 0.8 };
+    const chat = [{ is_user: true, mes: '*take lamp*' }];
+    await runTurn(deps, chat, 'normal');
+    assert.equal(chat[0].mes, '*take lamp*');
+});
+
+test('apart swipe: the user message is rewritten on the swipe pass too', async () => {
+    const deps = makeDeps({ translate: async () => ['pull sword'] });
+    deps.companionVM = makeCompanionVM('Clearing');
+    deps.companionMove = async () => null;
+    deps.settings = { strictness: 'strict', injectStateOnRp: false, companionTracking: true, companionBias: 0.2 };
+    const chat = [{ is_user: true, mes: '*pull sword*' }];
+    await runTurn(deps, chat, 'normal');               // real pass, records the turn
+    const chat2 = [{ is_user: true, mes: '*pull sword*' }];   // fresh prompt copies on swipe
+    await runTurn(deps, chat2, 'swipe');
+    assert.doesNotMatch(chat2[0].mes, /pull sword/, 'swipe prompt also hides the action');
+});

@@ -1,5 +1,5 @@
 // turn.js — orchestrate one chat turn. Pure: all ST/VM deps injected.
-import { readState, recordTurn, getActiveSnapshot, setCompanion, setTogether, getFollowQueue, setFollowQueue, setRoomDescription, recordMapEdge, setInventoryText, getEdgesForRoom } from './state.js';
+import { readState, recordTurn, getActiveSnapshot, setCompanion, setTogether, readTogether, getFollowQueue, setFollowQueue, setRoomDescription, recordMapEdge, setInventoryText, getEdgesForRoom } from './state.js';
 import { dirToRoom } from './exits.js';
 import { translate as translateDefault } from './translator.js';
 import { extractMoves, zone, detectShout } from './companion.js';
@@ -48,6 +48,17 @@ export async function runTurn(deps, chat, type) {
             injectStateOnRp: settings.injectStateOnRp,
         });
         if (block) setPrompt(block);
+        // Swipes rebuild fresh prompt copies: if the pair is apart, hide the
+        // player's action from the companion prompt on this pass too.
+        if (settings.companionTracking && !readTogether(metadata)) {
+            const playerShouted = detectShout(player.text);
+            chat[player.index] = {
+                ...chat[player.index],
+                mes: playerShouted
+                    ? `*From somewhere beyond this room, you hear a voice shouting:* ${player.text}`
+                    : '*They are somewhere else, out of your sight; you cannot tell what they are doing.*',
+            };
+        }
         if (deps.debugLog && reuseOutputs.length) deps.debugLog({ outputs: reuseOutputs, status, cmds: lastTurn.cmds ?? [] });
         return;
     }
@@ -167,16 +178,29 @@ export async function runTurn(deps, chat, type) {
             const block = buildCanonBlock({ outputs, status, ranCommands: cmds.length > 0, injectStateOnRp: settings.injectStateOnRp, companionPresent: true });
             if (block) setPrompt(block);
         } else {
+            const playerShouted = detectShout(player.text);
+            // If the companion's room has a learned edge to the player's room,
+            // the shout has a knowable direction.
+            const shoutDir = dirToRoom(getEdgesForRoom(metadata, companionStatus.location), playerRoom);
+            // Rewrite the user's last message IN THE PROMPT COPY (interceptors get
+            // shallow copies of the chat; the saved chat is untouched). The model
+            // mirrors whatever the final message says no matter what the canon
+            // forbids — so the companion's prompt must contain only what actually
+            // reaches her room: a heard shout, or nothing.
+            chat[player.index] = {
+                ...chat[player.index],
+                mes: playerShouted
+                    ? `*From ${shoutDir ? `the ${shoutDir}` : 'somewhere beyond this room'}, you hear a voice shouting:* ${player.text}`
+                    : '*They are somewhere else, out of your sight; you cannot tell what they are doing.*',
+            };
             const block = buildApartCanonBlock({
                 companionRoom: companionStatus.location,
                 companionScene,
                 playerLocation: playerRoom,
                 playerDir,
                 companionDir,
-                playerShouted: detectShout(player.text),
-                // If the companion's room has a learned edge to the player's room,
-                // the shout has a knowable direction.
-                shoutDir: dirToRoom(getEdgesForRoom(metadata, companionStatus.location), playerRoom),
+                playerShouted,
+                shoutDir,
             });
             setPrompt(block);
             if (deps.onNarratePlayerRoom) {
