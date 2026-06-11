@@ -17,3 +17,14 @@ export function stripReasoning(text) {
         .replace(/^\s*(?:thought|analysis|final|commentary)\b[:\s]*/i, '')  // leftover channel name at the start
         .trim();
 }
+
+/**
+ * Compact a Z-machine inventory answer for one-line display: drop the
+ * "You are carrying:"-style header and join the item lines with commas.
+ */
+export function compactInventory(text) {
+    const lines = String(text ?? '').split('\n').map((l) => l.trim()).filter(Boolean);
+    if (lines.length <= 1) return lines[0] ?? '';
+    const items = lines[0].endsWith(':') ? lines.slice(1) : lines;
+    return items.join(', ');
+}

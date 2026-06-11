@@ -30,3 +30,18 @@ test('handles null/undefined', () => {
     assert.equal(stripReasoning(undefined), '');
     assert.equal(stripReasoning(null), '');
 });
+
+import { compactInventory } from '../clean.js';
+
+test('compactInventory strips the header and joins items', () => {
+    assert.equal(compactInventory('You are carrying:\n  a brass lantern\n  a sword'), 'a brass lantern, a sword');
+});
+
+test('compactInventory passes through single-line answers', () => {
+    assert.equal(compactInventory('You are empty-handed.'), 'You are empty-handed.');
+});
+
+test('compactInventory handles empty/null', () => {
+    assert.equal(compactInventory(''), '');
+    assert.equal(compactInventory(null), '');
+});
