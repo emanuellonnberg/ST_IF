@@ -134,3 +134,13 @@ test('apart block without shout keeps the absolute wall', () => {
     const b = buildApartCanonBlock({ companionRoom: 'Cellar', companionScene: '', playerLocation: 'Hall', playerShouted: false });
     assert.match(b, /cannot see or hear/i);
 });
+
+test('apart shout names the direction when known', () => {
+    const b = buildApartCanonBlock({ companionRoom: 'Cellar', companionScene: '', playerLocation: 'Hall', playerShouted: true, shoutDir: 'up' });
+    assert.match(b, /shouting from the up/i);
+});
+
+test('apart shout stays vague without a known direction', () => {
+    const b = buildApartCanonBlock({ companionRoom: 'Cellar', companionScene: '', playerLocation: 'Hall', playerShouted: true, shoutDir: null });
+    assert.match(b, /somewhere beyond this room/i);
+});

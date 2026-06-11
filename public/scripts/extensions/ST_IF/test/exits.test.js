@@ -68,3 +68,12 @@ test('prompt forbids inferring exits from scenery mentions', () => {
     assert.match(p, /do not infer/i);
     assert.match(p, /scenery|landscape/i);
 });
+
+import { dirToRoom } from '../exits.js';
+
+test('dirToRoom finds the direction of a known adjacent room', () => {
+    assert.equal(dirToRoom({ north: 'Hall', up: 'Attic' }, 'Attic'), 'up');
+    assert.equal(dirToRoom({ north: 'Hall' }, 'Cellar'), null, 'not adjacent/known');
+    assert.equal(dirToRoom({}, 'Hall'), null);
+    assert.equal(dirToRoom(undefined, 'Hall'), null);
+});

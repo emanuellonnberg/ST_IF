@@ -64,3 +64,11 @@ export function formatExitsLine(merged) {
         return e.label ? `${e.dir} (${e.label})` : e.dir;
     }).join(', ');
 }
+
+/** Direction from a room toward a known adjacent room, per learned edges; null if unknown. */
+export function dirToRoom(edges, targetRoom) {
+    for (const [dir, dest] of Object.entries(edges ?? {})) {
+        if (dest === targetRoom) return dir;
+    }
+    return null;
+}

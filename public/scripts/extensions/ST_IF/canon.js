@@ -29,9 +29,9 @@ export function buildCanonBlock({ outputs, status, ranCommands, injectStateOnRp,
 /**
  * Canon for an APART turn, from the companion's point of view. The narrator
  * ({{char}}) grounds in their own room and must not narrate {{user}}'s actions.
- * @param {{companionRoom:string, companionScene:string, playerLocation:string, playerDir?:string|null, companionDir?:string|null, playerShouted?:boolean}} args
+ * @param {{companionRoom:string, companionScene:string, playerLocation:string, playerDir?:string|null, companionDir?:string|null, playerShouted?:boolean, shoutDir?:string|null}} args
  */
-export function buildApartCanonBlock({ companionRoom, companionScene, playerLocation, playerDir, companionDir, playerShouted }) {
+export function buildApartCanonBlock({ companionRoom, companionScene, playerLocation, playerDir, companionDir, playerShouted, shoutDir }) {
     const header = playerShouted
         ? '[GAME — IMPORTANT. {{char}} is NOT with {{user}} right now; you are apart, in different places. {{user}}\'s last message is something they do ELSEWHERE — {{char}} cannot see it and must NOT appear in that scene.]'
         : '[GAME — IMPORTANT. {{char}} is NOT with {{user}} right now; you are apart, in different places. {{user}}\'s last message is something they do ELSEWHERE — {{char}} cannot see or hear it and must NOT react to it or appear in that scene.]';
@@ -44,7 +44,9 @@ export function buildApartCanonBlock({ companionRoom, companionScene, playerLoca
     if (companionDir) lines.push(`You headed ${companionDir}, leaving {{user}} behind.`);
     if (playerDir) lines.push(`{{user}} headed ${playerDir} as you parted.`);
     if (playerShouted) {
-        lines.push('You DO hear {{user}}\'s voice shouting from somewhere beyond this room — you may react to the sound and try to go toward it.');
+        lines.push(shoutDir
+            ? `You DO hear {{user}}'s voice shouting from the ${shoutDir} — you may react to the sound and go that way.`
+            : 'You DO hear {{user}}\'s voice shouting from somewhere beyond this room — you may react to the sound and try to go toward it.');
     }
     lines.push(`You last saw {{user}} moving toward ${playerLocation}; you do not know what they are doing now.`);
     lines.push('Write ONLY what {{char}} does alone here, in character. Do not address {{user}} as if present, and do not narrate {{user}}\'s actions.');

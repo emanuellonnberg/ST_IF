@@ -1,5 +1,6 @@
 // turn.js — orchestrate one chat turn. Pure: all ST/VM deps injected.
-import { readState, recordTurn, getActiveSnapshot, setCompanion, setTogether, getFollowQueue, setFollowQueue, setRoomDescription, recordMapEdge, setInventoryText } from './state.js';
+import { readState, recordTurn, getActiveSnapshot, setCompanion, setTogether, getFollowQueue, setFollowQueue, setRoomDescription, recordMapEdge, setInventoryText, getEdgesForRoom } from './state.js';
+import { dirToRoom } from './exits.js';
 import { translate as translateDefault } from './translator.js';
 import { extractMoves, zone, detectShout } from './companion.js';
 import { buildCanonBlock, buildApartCanonBlock } from './canon.js';
@@ -173,6 +174,9 @@ export async function runTurn(deps, chat, type) {
                 playerDir,
                 companionDir,
                 playerShouted: detectShout(player.text),
+                // If the companion's room has a learned edge to the player's room,
+                // the shout has a knowable direction.
+                shoutDir: dirToRoom(getEdgesForRoom(metadata, companionStatus.location), playerRoom),
             });
             setPrompt(block);
             if (deps.onNarratePlayerRoom) {
