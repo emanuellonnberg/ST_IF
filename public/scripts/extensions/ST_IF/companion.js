@@ -7,6 +7,11 @@ const DIRECTIONS = new Set([
     'n', 's', 'e', 'w', 'u', 'd',
 ]);
 
+/** True when the player's prose contains a loud action that would carry between rooms. */
+export function detectShout(text) {
+    return /\b(shout|yell|scream|holler|bellow|call(s|ed|ing)? out|cr(y|ies|ied) out)/i.test(String(text ?? ''));
+}
+
 /** Pull the compass-direction commands out of a translated command list, in order. */
 export function extractMoves(cmds) {
     return (cmds || [])

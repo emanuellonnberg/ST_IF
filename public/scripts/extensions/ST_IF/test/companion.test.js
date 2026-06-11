@@ -97,3 +97,19 @@ test('decideAgency extracts JSON wrapped in prose', async () => {
     assert.deepEqual(await decideAgency('x', 'A', 'B', [], 0.7, async () => 'Sure:\n{"action":"stay"}\nok'),
         { action: 'stay', direction: null });
 });
+
+import { detectShout } from '../companion.js';
+
+test('detectShout catches loud actions', () => {
+    assert.equal(detectShout('*shout hey, come here!*'), true);
+    assert.equal(detectShout('I yell her name into the dark'), true);
+    assert.equal(detectShout('he screams for help'), true);
+    assert.equal(detectShout('I call out softly'), true);
+});
+
+test('detectShout ignores quiet actions', () => {
+    assert.equal(detectShout('I whisper her name'), false);
+    assert.equal(detectShout('*goes north*'), false);
+    assert.equal(detectShout(''), false);
+    assert.equal(detectShout(null), false);
+});

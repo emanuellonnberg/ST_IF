@@ -295,3 +295,13 @@ test('inventory capture fails open when query throws or is absent', async () => 
     await runTurn(deps2, [{ is_user: true, mes: 'take lamp' }], 'normal');
     assert.ok(true);
 });
+
+test('apart turn with a shout passes the audible cue into the canon', async () => {
+    const deps = makeDeps({ translate: async () => ['shout'] });
+    deps.companionVM = makeCompanionVM('Clearing');     // different room → apart
+    deps.companionMove = async () => null;
+    deps.settings = { strictness: 'strict', injectStateOnRp: false, companionTracking: true, companionBias: 0.2 };
+    await runTurn(deps, [{ is_user: true, mes: '*shout hey, come here!*' }], 'normal');
+    assert.match(deps._calls.setPrompt[0], /DO hear/i);
+    assert.match(deps._calls.setPrompt[0], /did not say or do/i);
+});

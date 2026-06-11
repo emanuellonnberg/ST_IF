@@ -116,3 +116,21 @@ test('apart block forcefully states separation and forbids reacting to the user'
     assert.match(b, /alone at: Cellar/);
     assert.match(b, /ONLY what \{\{char\}\} does/);
 });
+
+test('apart block always attributes the last message to the user, not the char', () => {
+    const b = buildApartCanonBlock({ companionRoom: 'Cellar', companionScene: '', playerLocation: 'Hall' });
+    assert.match(b, /not yours/i);
+    assert.match(b, /did not say or do/i);
+});
+
+test('apart block with playerShouted lets the companion hear the shout', () => {
+    const b = buildApartCanonBlock({ companionRoom: 'Cellar', companionScene: '', playerLocation: 'Hall', playerShouted: true });
+    assert.match(b, /hear \{\{user\}\}.{0,40}shout/i);
+    assert.doesNotMatch(b, /cannot see or hear/i);
+    assert.match(b, /did not say or do/i, 'attribution still present');
+});
+
+test('apart block without shout keeps the absolute wall', () => {
+    const b = buildApartCanonBlock({ companionRoom: 'Cellar', companionScene: '', playerLocation: 'Hall', playerShouted: false });
+    assert.match(b, /cannot see or hear/i);
+});
