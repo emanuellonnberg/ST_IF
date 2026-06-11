@@ -137,3 +137,39 @@ test('roomDescription round-trips and defaults to empty', () => {
 test('getRoomDescription is empty for legacy state without the field', () => {
     assert.equal(getRoomDescription({ ST_IF: { storyId: 'x', snapshot: 'P', summary: null, history: [] } }), '');
 });
+
+import { getInventoryText, setInventoryText, getExitsForRoom, setExitsForRoom, getEdgesForRoom, recordMapEdge } from '../state.js';
+
+test('inventoryText round-trips and defaults to empty', () => {
+    const md = {};
+    initState2(md, 'tiny.z5', 'SNAP0');
+    assert.equal(getInventoryText(md), '');
+    setInventoryText(md, 'a lantern, a sword');
+    assert.equal(getInventoryText(md), 'a lantern, a sword');
+});
+
+test('exits cache: unset room is undefined; set round-trips incl. empty array', () => {
+    const md = {};
+    initState2(md, 'tiny.z5', 'SNAP0');
+    assert.equal(getExitsForRoom(md, 'Cave'), undefined);
+    setExitsForRoom(md, 'Cave', [{ dir: 'north', label: null }]);
+    assert.deepEqual(getExitsForRoom(md, 'Cave'), [{ dir: 'north', label: null }]);
+    setExitsForRoom(md, 'Void', []);
+    assert.deepEqual(getExitsForRoom(md, 'Void'), [], 'empty array is a cached success');
+});
+
+test('map edges record and read per room', () => {
+    const md = {};
+    initState2(md, 'tiny.z5', 'SNAP0');
+    assert.deepEqual(getEdgesForRoom(md, 'Cave'), {});
+    recordMapEdge(md, 'Cave', 'north', 'Hall');
+    recordMapEdge(md, 'Cave', 'up', 'Attic');
+    assert.deepEqual(getEdgesForRoom(md, 'Cave'), { north: 'Hall', up: 'Attic' });
+});
+
+test('hud accessors tolerate legacy state without the fields', () => {
+    const md = { ST_IF: { storyId: 'x', snapshot: 'P', summary: null, history: [] } };
+    assert.equal(getInventoryText(md), '');
+    assert.equal(getExitsForRoom(md, 'Cave'), undefined);
+    assert.deepEqual(getEdgesForRoom(md, 'Cave'), {});
+});

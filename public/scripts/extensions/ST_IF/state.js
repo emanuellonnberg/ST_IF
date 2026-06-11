@@ -98,3 +98,36 @@ export function rewindTo(metadata, msgIndex) {
     s.snapshot = snap;
     return snap;
 }
+
+export function getInventoryText(metadata) {
+    return metadata[KEY]?.inventoryText ?? '';
+}
+
+export function setInventoryText(metadata, text) {
+    const s = metadata[KEY];
+    if (!s) throw new Error('ST_IF state not initialized');
+    s.inventoryText = String(text ?? '');
+}
+
+export function getExitsForRoom(metadata, room) {
+    return metadata[KEY]?.exitsCache?.[room];
+}
+
+export function setExitsForRoom(metadata, room, exits) {
+    const s = metadata[KEY];
+    if (!s) throw new Error('ST_IF state not initialized');
+    s.exitsCache = s.exitsCache ?? {};
+    s.exitsCache[room] = exits;
+}
+
+export function getEdgesForRoom(metadata, room) {
+    return metadata[KEY]?.mapEdges?.[room] ?? {};
+}
+
+export function recordMapEdge(metadata, fromRoom, dir, toRoom) {
+    const s = metadata[KEY];
+    if (!s) throw new Error('ST_IF state not initialized');
+    s.mapEdges = s.mapEdges ?? {};
+    s.mapEdges[fromRoom] = s.mapEdges[fromRoom] ?? {};
+    s.mapEdges[fromRoom][dir] = toRoom;
+}
