@@ -265,3 +265,30 @@ test('apart: companion keeps its own snapshot (not synced to player)', async () 
     assert.equal(readTogether(deps.metadata), false);
     assert.equal(getCompanionSnapshot(deps.metadata), 'CSNAP0', 'companion keeps its own world');
 });
+
+test('records map edges per step when moves change rooms', async () => {
+    const deps = makeDeps({ translate: async () => ['north', 'east'], vm: makeMovingVM() });
+    await runTurn(deps, [{ is_user: true, mes: 'north then east' }], 'normal');
+    const { getEdgesForRoom } = await import('../state.js');
+    assert.deepEqual(getEdgesForRoom(deps.metadata, 'Start'), { north: 'north' });
+    assert.deepEqual(getEdgesForRoom(deps.metadata, 'north'), { east: 'east' });
+});
+
+test('captures compacted inventory after an action turn when vm.query exists', async () => {
+    const vm = makeMovingVM();
+    vm.query = (cmd) => cmd === 'inventory' ? 'You are carrying:\n  a brass lantern\n  a sword' : '';
+    const deps = makeDeps({ translate: async () => ['take lamp'], vm });
+    await runTurn(deps, [{ is_user: true, mes: 'take lamp' }], 'normal');
+    const { getInventoryText } = await import('../state.js');
+    assert.equal(getInventoryText(deps.metadata), 'a brass lantern, a sword');
+});
+
+test('inventory capture fails open when query throws or is absent', async () => {
+    const vm = makeMovingVM();
+    vm.query = () => { throw new Error('boom'); };
+    const deps = makeDeps({ translate: async () => ['take lamp'], vm });
+    await runTurn(deps, [{ is_user: true, mes: 'take lamp' }], 'normal');
+    const deps2 = makeDeps({ translate: async () => ['take lamp'] });
+    await runTurn(deps2, [{ is_user: true, mes: 'take lamp' }], 'normal');
+    assert.ok(true);
+});

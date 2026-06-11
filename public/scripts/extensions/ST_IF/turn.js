@@ -1,8 +1,9 @@
 // turn.js — orchestrate one chat turn. Pure: all ST/VM deps injected.
-import { readState, recordTurn, getActiveSnapshot, setCompanion, setTogether, getFollowQueue, setFollowQueue, setRoomDescription } from './state.js';
+import { readState, recordTurn, getActiveSnapshot, setCompanion, setTogether, getFollowQueue, setFollowQueue, setRoomDescription, recordMapEdge, setInventoryText } from './state.js';
 import { translate as translateDefault } from './translator.js';
 import { extractMoves, zone } from './companion.js';
 import { buildCanonBlock, buildApartCanonBlock } from './canon.js';
+import { compactInventory } from './clean.js';
 
 const SKIP_TYPES = new Set(['quiet', 'impersonate']);
 
@@ -54,9 +55,16 @@ export async function runTurn(deps, chat, type) {
     const statusForPrompt = vm.getStatus();
     const cmds = await translate(player.text, statusForPrompt, settings.strictness);
 
-    // 5. STEP VM.
+    // 5. STEP VM — recording learned map edges per step (move that changed rooms).
     const outputs = [];
-    for (const cmd of cmds) outputs.push(vm.step(cmd));
+    let prevLoc = statusForPrompt.location;
+    for (const cmd of cmds) {
+        outputs.push(vm.step(cmd));
+        const nowLoc = vm.getStatus().location;
+        const dir = extractMoves([cmd])[0];
+        if (dir && nowLoc !== prevLoc) recordMapEdge(metadata, prevLoc, dir, nowLoc);
+        prevLoc = nowLoc;
+    }
     const status = vm.getStatus();
 
     // Capture the current room description for the persistent display:
@@ -65,6 +73,13 @@ export async function runTurn(deps, chat, type) {
     const lookish = cmds.some((c) => /^(look|l|examine room)$/i.test(String(c).trim()));
     if ((movedRoom || lookish) && outputs.length) {
         setRoomDescription(metadata, outputs[outputs.length - 1]);
+    }
+
+    // Exact inventory for the HUD — vm.query is side-effect-free; fail open.
+    if (cmds.length && typeof vm.query === 'function') {
+        try {
+            setInventoryText(metadata, compactInventory(vm.query('inventory')));
+        } catch { /* HUD-only data — never block the turn */ }
     }
 
     // 6. PERSIST canonical snapshot + history (store outputs for swipe reuse).
