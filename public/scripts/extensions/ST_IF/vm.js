@@ -212,6 +212,19 @@ export class IFVM {
         return cleanOutput(this._glkote.takeBuffer(), String(command));
     }
 
+    /**
+     * Run a command and roll the VM back: returns the command's output with zero
+     * net game effect (the restore rewinds everything, move counter included).
+     * Used for read-only queries like 'inventory'.
+     */
+    query(command) {
+        if (!this._loaded) throw new Error('ST_IF: no story loaded');
+        const snap = this.save();
+        const out = this.step(command);
+        this.restore(snap);
+        return out;
+    }
+
     /** Serialize full VM state to a base64 string. */
     save() {
         if (!this._loaded) throw new Error('ST_IF: no story loaded');

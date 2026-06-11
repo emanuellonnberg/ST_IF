@@ -89,3 +89,16 @@ test('forces verbose so re-entering a visited room prints the full description',
     assert.match(back, /open field|white house/i, 'full description on return');
     assert.ok(back.trim().length > 90, 'not the brief name-only form');
 });
+
+test('query runs a command with zero net game effect', async () => {
+    const vm = new IFVM();
+    await vm.load(zork);
+    vm.step('open mailbox'); vm.step('take leaflet');
+    const before = vm.getStatus();
+    const inv = vm.query('inventory');
+    assert.match(inv, /carrying|leaflet/i, 'returns the inventory answer');
+    const after = vm.getStatus();
+    assert.deepEqual(after, before, 'location/score/moves unchanged by the query');
+    const next = vm.step('look');
+    assert.match(next, /West of House/i, 'VM still playable after a query');
+});
