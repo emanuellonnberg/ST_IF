@@ -22,9 +22,12 @@ export async function runTurn(deps, chat, type) {
     const { vm, metadata, setPrompt, clearPrompt, save, settings } = deps;
     const translate = deps.translate ?? ((t, s, str) => translateDefault(t, s, str, deps.generate));
 
-    // 1. GUARDS — always clear stale injection so a skipped turn can't leak last turn's canon.
-    clearPrompt();
+    // 1. GUARDS. Quiet/impersonate generations happen mid-turn (translator, companion
+    // intent, player-room narration, exits extraction) and re-enter this interceptor:
+    // they must NOT touch the canon the main generation is using — return untouched.
     if (SKIP_TYPES.has(type)) return;
+    // Real turn: clear stale injection so a skipped turn can't leak last turn's canon.
+    clearPrompt();
     if (!vm?.loaded) return;
     if (!readState(metadata)) return;
     const player = lastUserMessage(chat);

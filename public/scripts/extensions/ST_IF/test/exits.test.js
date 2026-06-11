@@ -62,3 +62,9 @@ test('formatExitsLine renders labels, destinations, and visited marks', () => {
 test('formatExitsLine handles empty', () => {
     assert.equal(formatExitsLine([]), '');
 });
+
+test('prompt forbids inferring exits from scenery mentions', () => {
+    const p = buildExitsPrompt(DESC);
+    assert.match(p, /do not infer/i);
+    assert.match(p, /scenery|landscape/i);
+});

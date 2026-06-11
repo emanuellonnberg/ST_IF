@@ -169,7 +169,8 @@ globalThis.ST_IF_interceptor = async function (chat, _contextSize, _abort, type)
         await runTurn(buildDeps(), chat, type);
         renderRoomPanel();
         renderHud();
-        ensureExitsExtracted();
+        // exits extraction is deferred to GENERATION_ENDED — a quiet LLM call here
+        // would race the main generation on a single-slot backend.
     } catch (e) {
         console.error('[ST_IF] interceptor error', e);
     }
@@ -283,6 +284,10 @@ jQuery(async () => {
     });
     registerSlashCommands();
     eventSource.on(event_types.CHAT_CHANGED, ensureStoryLoaded);
+    eventSource.on(event_types.GENERATION_ENDED, () => {
+        renderHud();
+        ensureExitsExtracted();
+    });
     await ensureStoryLoaded();
     renderRoomPanel();
     console.log('[ST_IF] ready');

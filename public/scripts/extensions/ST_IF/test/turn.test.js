@@ -32,12 +32,15 @@ function makeDeps(overrides = {}) {
     };
 }
 
-test('guard: skips quiet generations, clears any stale prompt', async () => {
+test('guard: quiet generations are fully transparent — no step, no prompt CLEAR', async () => {
+    // Quiet calls (translator, companion intent, narration, exits extraction) run
+    // mid-turn and re-enter the interceptor: they must NOT wipe the canon the main
+    // generation is about to use.
     const deps = makeDeps();
     const chat = [{ is_user: true, mes: 'go north' }];
     await runTurn(deps, chat, 'quiet');
     assert.equal(deps._calls.setPrompt.length, 0);
-    assert.equal(deps._calls.clearPrompt, 1);
+    assert.equal(deps._calls.clearPrompt, 0, 'must not clear the active canon');
     assert.deepEqual(deps.vm.steps, []);
 });
 

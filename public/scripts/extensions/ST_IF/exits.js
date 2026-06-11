@@ -5,6 +5,8 @@ import { extractMoves } from './companion.js';
 export function buildExitsPrompt(roomDesc) {
     return [
         'Read this Interactive Fiction room description and list the exits it mentions.',
+        'Only include directions the text explicitly offers as ways to go (a path, exit, door, tunnel, staircase, or "leads/heads <direction>").',
+        'Do NOT infer exits from scenery: "the south edge of a ravine" or "mountains to the west" are not exits.',
         'Respond with ONLY a JSON array: [{"dir":"<compass word>","label":"<short landmark or empty>"}].',
         'Use compass words only (north, south, east, west, up, down, in, out, ne, nw, se, sw). Empty array if none.',
         '',
