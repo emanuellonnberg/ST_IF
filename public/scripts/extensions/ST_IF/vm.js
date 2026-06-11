@@ -198,11 +198,21 @@ export class IFVM {
         // description (Z-machine defaults to BRIEF: name-only on return). The
         // confirmation ("Maximum verbosity.") is discarded; the intro was already
         // captured during _boot.
-        try { this.step('verbose'); } catch { /* game without a verbose verb — ignore */ }
+        this.ensureVerbose();
     }
 
     /** The opening scene text captured at load (empty after a restore). */
     getIntro() { return this._intro; }
+
+    /**
+     * Re-assert VERBOSE mode. The flag lives in game memory, so restoring a
+     * snapshot whose lineage predates verbose-forcing silently reverts to BRIEF
+     * (name-only room descriptions on revisit). Idempotent; call after restoring
+     * a stored snapshot.
+     */
+    ensureVerbose() {
+        try { this.step('verbose'); } catch { /* game without a verbose verb — ignore */ }
+    }
 
     /** Run one parser command, return the cleaned text the VM emitted. */
     step(command) {

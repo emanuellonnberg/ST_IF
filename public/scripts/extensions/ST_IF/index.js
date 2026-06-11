@@ -189,9 +189,10 @@ async function ensureStoryLoaded() {
         saveMetadataDebounced();
         showIntroIfDebug();
     } else {
-        // Resume: restore this chat's canonical snapshot.
+        // Resume: restore this chat's canonical snapshot. Old save lineages may
+        // predate verbose-forcing (the flag lives in game memory), so re-assert it.
         const snap = getActiveSnapshot(ctx.chatMetadata);
-        if (snap) vm.restore(snap);
+        if (snap) { vm.restore(snap); vm.ensureVerbose(); }
     }
 
     // Companion VM mirrors the same story; seed/restore its own position.
@@ -199,7 +200,7 @@ async function ensureStoryLoaded() {
     const st = readState(ctx.chatMetadata);
     if (st) {
         const csnap = getCompanionSnapshot(ctx.chatMetadata);
-        if (csnap) companionVM.restore(csnap);
+        if (csnap) { companionVM.restore(csnap); companionVM.ensureVerbose(); }
         if (!st.companion) {
             setCompanion(ctx.chatMetadata, { snapshot: companionVM.save(), summary: companionVM.getStatus() });
             saveMetadataDebounced();
@@ -256,6 +257,7 @@ function registerSlashCommands() {
             const snap = rewindTo(ctx.chatMetadata, Number(value));
             if (!snap) return `No game turn recorded at message ${value}.`;
             vm.restore(snap);
+            vm.ensureVerbose();
             saveMetadataDebounced();
             return `Rewound to before message ${value}.`;
         },

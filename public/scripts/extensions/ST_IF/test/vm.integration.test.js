@@ -102,3 +102,19 @@ test('query runs a command with zero net game effect', async () => {
     const next = vm.step('look');
     assert.match(next, /West of House/i, 'VM still playable after a query');
 });
+
+test('ensureVerbose repairs a brief-lineage snapshot after restore', async () => {
+    const a = new IFVM();
+    await a.load(zork);
+    a.step('brief');                      // simulate an old pre-verbose save lineage
+    const briefSnap = a.save();
+
+    const b = new IFVM();
+    await b.load(zork);
+    b.restore(briefSnap);                 // restore overrides the load-time verbose
+    b.ensureVerbose();                    // the repair
+    b.step('north'); b.step('east'); b.step('south');
+    const back = b.step('west');
+    assert.ok(back.trim().length > 90, 'full description after verbose repair');
+    assert.match(back, /open field|white house/i);
+});
