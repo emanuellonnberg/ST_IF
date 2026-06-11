@@ -11,3 +11,20 @@
     border-radius: 6px;
     padding: 6px 8px;
 }
+#st_if_hud {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin: 2px 5px;
+    padding: 3px 10px;
+    font-size: 0.85em;
+    border: 1px solid var(--SmartThemeBorderColor, #444);
+    border-radius: 8px;
+    background: var(--SmartThemeBlurTintColor, rgba(0, 0, 0, 0.3));
+    opacity: 0.95;
+}
+#st_if_hud .st_if_hud_pin { cursor: pointer; user-select: none; }
+#st_if_hud.st_if_collapsed > :not(.st_if_hud_pin) { display: none; }
+#st_if_hud.st_if_hidden { display: none; }
+#st_if_hud .st_if_hud_seg { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40%; }

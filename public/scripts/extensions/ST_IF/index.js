@@ -11,9 +11,10 @@ import { IFVM } from './vm.js';
 import { translate } from './translator.js';
 import { decideMove, decideAgency } from './companion.js';
 import { runTurn } from './turn.js';
-import { readState, initState, getActiveSnapshot, rewindTo, KEY, setCompanion, getCompanionSnapshot, getRoomDescription, setRoomDescription } from './state.js';
+import { readState, initState, getActiveSnapshot, rewindTo, KEY, setCompanion, getCompanionSnapshot, getRoomDescription, setRoomDescription, getInventoryText, getExitsForRoom, setExitsForRoom, getEdgesForRoom, readTogether } from './state.js';
 import { loadSettings, getSettings, wireSettingsUI, base64ToBytes } from './settings.js';
 import { stripReasoning } from './clean.js';
+import { extractExits, mergeExits, formatExitsLine } from './exits.js';
 
 const vm = new IFVM();
 const companionVM = new IFVM();
@@ -102,6 +103,56 @@ function renderRoomPanel() {
     el.textContent = `${loc}${desc ? `\n\n${desc}` : ''}${bits.length ? `\n\n${bits.join(' · ')}` : ''}`;
 }
 
+/** Render the floating HUD strip (location · exits · inventory [· companion]). */
+function renderHud() {
+    let el = document.getElementById('st_if_hud');
+    if (!el) {
+        const form = document.getElementById('send_form');
+        if (!form) return;
+        el = document.createElement('div');
+        el.id = 'st_if_hud';
+        el.innerHTML = '<span class="st_if_hud_pin" title="Collapse/expand">📍</span>' +
+            '<span class="st_if_hud_seg" id="st_if_hud_loc"></span>' +
+            '<span class="st_if_hud_seg" id="st_if_hud_exits"></span>' +
+            '<span class="st_if_hud_seg" id="st_if_hud_inv"></span>' +
+            '<span class="st_if_hud_seg" id="st_if_hud_comp"></span>';
+        form.parentElement.insertBefore(el, form);
+        el.querySelector('.st_if_hud_pin').addEventListener('click', () => el.classList.toggle('st_if_collapsed'));
+    }
+    const cfg = getSettings();
+    const ctx = getContext();
+    const s = readState(ctx.chatMetadata);
+    el.classList.toggle('st_if_hidden', !cfg?.showHud || !s);
+    if (!s) return;
+    const room = s.summary?.location ?? '?';
+    el.querySelector('#st_if_hud_loc').textContent = room;
+    const merged = mergeExits(getExitsForRoom(ctx.chatMetadata, room) ?? [], getEdgesForRoom(ctx.chatMetadata, room));
+    const exitsLine = formatExitsLine(merged);
+    el.querySelector('#st_if_hud_exits').textContent = exitsLine ? `· Exits: ${exitsLine}` : '';
+    const inv = getInventoryText(ctx.chatMetadata);
+    el.querySelector('#st_if_hud_inv').textContent = inv ? `· 🎒 ${inv}` : '';
+    const compRoom = s.companion?.summary?.location;
+    const apart = cfg?.companionTracking && compRoom && !readTogether(ctx.chatMetadata);
+    el.querySelector('#st_if_hud_comp').textContent = apart ? `· 👥 ${compRoom}` : '';
+}
+
+/** Fire-and-forget: extract exits for the current room if not cached yet. */
+function ensureExitsExtracted() {
+    const ctx = getContext();
+    const s = readState(ctx.chatMetadata);
+    const room = s?.summary?.location;
+    const desc = getRoomDescription(ctx.chatMetadata);
+    if (!room || !desc || getExitsForRoom(ctx.chatMetadata, room) !== undefined) return;
+    extractExits(desc, (prompt) => generateQuietPrompt({ quietPrompt: prompt, responseLength: 60, skipWIAN: true }))
+        .then((exits) => {
+            if (exits === null) return;            // parse failure — leave uncached, retry later
+            setExitsForRoom(ctx.chatMetadata, room, exits);
+            saveMetadataDebounced();
+            renderHud();
+        })
+        .catch((e) => console.warn('[ST_IF] exits extraction failed', e));
+}
+
 /** Dev-mode: surface the opening scene as a toast when "Show raw game output" is on. */
 function showIntroIfDebug() {
     if (getSettings()?.showRawOutput && vm.loaded) {
@@ -117,6 +168,8 @@ globalThis.ST_IF_interceptor = async function (chat, _contextSize, _abort, type)
     try {
         await runTurn(buildDeps(), chat, type);
         renderRoomPanel();
+        renderHud();
+        ensureExitsExtracted();
     } catch (e) {
         console.error('[ST_IF] interceptor error', e);
     }
@@ -153,6 +206,8 @@ async function ensureStoryLoaded() {
     }
 
     renderRoomPanel();
+    renderHud();
+    ensureExitsExtracted();
 }
 
 /** /if-cmd advances the VM outside the turn pipeline; persist the new snapshot. */
@@ -223,6 +278,8 @@ jQuery(async () => {
         saveMetadataDebounced();
         showIntroIfDebug();
         renderRoomPanel();
+        renderHud();
+        ensureExitsExtracted();
     });
     registerSlashCommands();
     eventSource.on(event_types.CHAT_CHANGED, ensureStoryLoaded);

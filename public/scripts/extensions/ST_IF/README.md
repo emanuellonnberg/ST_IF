@@ -56,6 +56,11 @@ chat forks the game state with it.
 - **Translator strictness** — *Strict* fires only on clear physical actions (the
   game stays invisible until you act); *Loose* maps more verbs.
 - **Canon injection depth** — how deep in the chat the canon block is injected.
+- **Game HUD** — a toggleable strip above the chat input: 📍 location · exits ·
+  🎒 inventory (and the companion's room when you're apart). Exits are extracted from
+  the room text once per room and confirmed by your actual moves (`✓` = walked, with
+  the destination). Inventory is queried from the game itself with zero side effects
+  (the move counter doesn't advance). Click 📍 to collapse.
 - **Current room** — a persistent read-only box in the drawer showing your location,
   the room's prose (which names exits/items), and score/moves. It updates when you
   move or `look`, keeps the description through non-move actions (e.g. `take`), and

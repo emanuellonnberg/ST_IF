@@ -19,6 +19,7 @@ export const defaultSettings = {
     companionTracking: false,
     companionBias: 0.7,     // 0 = wanders freely, 1 = stays glued to the player
     companionAgency: false, // LLM decides follow/stay/move instead of the deterministic zones
+    showHud: true,          // floating exits/inventory strip above the chat input
     storyName: '',
     storyBase64: '',   // the .z5/.z8 bytes, base64
 };
@@ -73,6 +74,10 @@ export function wireSettingsUI(onStoryLoaded) {
     updateBiasLabel(s.companionBias);
     $('#st_if_agency').prop('checked', s.companionAgency).on('change', function () {
         s.companionAgency = $(this).prop('checked'); saveSettingsDebounced();
+    });
+    $('#st_if_hud_toggle').prop('checked', s.showHud).on('change', function () {
+        s.showHud = $(this).prop('checked'); saveSettingsDebounced();
+        document.getElementById('st_if_hud')?.classList.toggle('st_if_hidden', !s.showHud);
     });
     $('#st_if_strictness').val(s.strictness).on('change', function () {
         s.strictness = String($(this).val()); saveSettingsDebounced();
