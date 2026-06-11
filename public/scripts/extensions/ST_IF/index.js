@@ -142,11 +142,11 @@ function ensureExitsExtracted() {
     const s = readState(ctx.chatMetadata);
     const room = s?.summary?.location;
     const desc = getRoomDescription(ctx.chatMetadata);
-    if (!room || !desc || getExitsForRoom(ctx.chatMetadata, room) !== undefined) return;
+    if (!room || !desc || getExitsForRoom(ctx.chatMetadata, room, desc) !== undefined) return;
     extractExits(desc, (prompt) => generateQuietPrompt({ quietPrompt: prompt, responseLength: 60, skipWIAN: true }))
         .then((exits) => {
             if (exits === null) return;            // parse failure — leave uncached, retry later
-            setExitsForRoom(ctx.chatMetadata, room, exits);
+            setExitsForRoom(ctx.chatMetadata, room, exits, desc);
             saveMetadataDebounced();
             renderHud();
         })

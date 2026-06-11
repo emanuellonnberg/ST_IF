@@ -173,3 +173,18 @@ test('hud accessors tolerate legacy state without the fields', () => {
     assert.equal(getExitsForRoom(md, 'Cave'), undefined);
     assert.deepEqual(getEdgesForRoom(md, 'Cave'), {});
 });
+
+test('exits cache invalidates when the room description changes', () => {
+    const md = {};
+    initState2(md, 'tiny.z5', 'SNAP0');
+    setExitsForRoom(md, 'Cave', [{ dir: 'north', label: null }], 'A dark cave. Exit north.');
+    assert.deepEqual(getExitsForRoom(md, 'Cave', 'A dark cave. Exit north.'), [{ dir: 'north', label: null }], 'same desc → cached');
+    assert.equal(getExitsForRoom(md, 'Cave', 'A dark cave, now lit. Exits north and east.'), undefined, 'changed desc → stale');
+    assert.deepEqual(getExitsForRoom(md, 'Cave'), [{ dir: 'north', label: null }], 'no-desc read returns cached exits for display');
+});
+
+test('legacy array-shaped cache entries are treated as uncached (forces re-extract)', () => {
+    const md = { ST_IF: { storyId: 'x', snapshot: 'P', summary: null, history: [], exitsCache: { Carousel: [] } } };
+    assert.equal(getExitsForRoom(md, 'Carousel'), undefined);
+    assert.equal(getExitsForRoom(md, 'Carousel', 'Eight passages.'), undefined);
+});

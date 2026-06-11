@@ -109,15 +109,24 @@ export function setInventoryText(metadata, text) {
     s.inventoryText = String(text ?? '');
 }
 
-export function getExitsForRoom(metadata, room) {
-    return metadata[KEY]?.exitsCache?.[room];
+/**
+ * Read cached exits for a room. Entries store the description they were extracted
+ * from; passing `desc` makes a mismatch read as uncached (stale → re-extract).
+ * Legacy array-shaped entries (pre-desc cache) also read as uncached.
+ * Omit `desc` for display reads (returns whatever is cached).
+ */
+export function getExitsForRoom(metadata, room, desc) {
+    const e = metadata[KEY]?.exitsCache?.[room];
+    if (!e || Array.isArray(e)) return undefined;
+    if (desc !== undefined && e.desc !== desc) return undefined;
+    return e.exits;
 }
 
-export function setExitsForRoom(metadata, room, exits) {
+export function setExitsForRoom(metadata, room, exits, desc) {
     const s = metadata[KEY];
     if (!s) throw new Error('ST_IF state not initialized');
     s.exitsCache = s.exitsCache ?? {};
-    s.exitsCache[room] = exits;
+    s.exitsCache[room] = { exits, desc: desc ?? '' };
 }
 
 export function getEdgesForRoom(metadata, room) {
