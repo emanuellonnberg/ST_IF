@@ -259,14 +259,16 @@ test('together: companion VM syncs to the player snapshot (shares world)', async
     assert.equal(deps.companionVM._snap, deps.vm.save(), 'companion VM restored to the player world');
 });
 
-test('apart: companion keeps its own snapshot (not synced to player)', async () => {
+test('apart: companion keeps its own STORED snapshot lineage (not synced to player)', async () => {
     const deps = makeDeps({ translate: async () => ['take lamp'] });   // no movement
     deps.companionVM = makeCompanionVM('Clearing');                    // different room → apart
     deps.settings = { strictness: 'strict', injectStateOnRp: false, companionTracking: true, companionBias: 0.8 };
+    const { setCompanion, getCompanionSnapshot, readTogether } = await import('../state.js');
+    setCompanion(deps.metadata, { snapshot: 'CSNAP-STORED', summary: { location: 'Clearing' } });
     await runTurn(deps, [{ is_user: true, mes: 'take lamp' }], 'normal');
-    const { getCompanionSnapshot, readTogether } = await import('../state.js');
     assert.equal(readTogether(deps.metadata), false);
-    assert.equal(getCompanionSnapshot(deps.metadata), 'CSNAP0', 'companion keeps its own world');
+    assert.equal(getCompanionSnapshot(deps.metadata), 'CSNAP-STORED', 'own stored lineage persists; no player sync');
+    assert.notEqual(getCompanionSnapshot(deps.metadata), deps.vm.save(), 'distinct from the player snapshot');
 });
 
 test('records map edges per step when moves change rooms', async () => {
@@ -350,4 +352,17 @@ test('apart swipe: the user message is rewritten on the swipe pass too', async (
     const chat2 = [{ is_user: true, mes: '*pull sword*' }];   // fresh prompt copies on swipe
     await runTurn(deps, chat2, 'swipe');
     assert.doesNotMatch(chat2[0].mes, /pull sword/, 'swipe prompt also hides the action');
+});
+
+test('companion VM is re-synced from the stored snapshot before acting (reload safety)', async () => {
+    const deps = makeDeps({ translate: async () => [] });
+    const vmC = makeCompanionVM('FreshBootRoom');       // live VM diverged (e.g. page reload skipped restore)
+    vmC.restores = [];
+    vmC.restore = function (s) { this.restores.push(s); this._snap = s; };
+    deps.companionVM = vmC;
+    deps.companionMove = async () => null;
+    deps.settings = { strictness: 'strict', injectStateOnRp: true, companionTracking: true, companionBias: 0.2 };
+    await runTurn(deps, [{ is_user: true, mes: 'I wait' }], 'normal');
+    assert.ok(vmC.restores.includes('SNAP0'), 'restored from the persisted companion snapshot (seeded as SNAP0)');
+    assert.ok(vmC.restores.indexOf('SNAP0') === 0, 'stored-snapshot restore happens first, before any stepping');
 });

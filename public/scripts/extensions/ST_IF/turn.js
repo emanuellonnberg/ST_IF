@@ -1,5 +1,5 @@
 // turn.js — orchestrate one chat turn. Pure: all ST/VM deps injected.
-import { readState, recordTurn, getActiveSnapshot, setCompanion, setTogether, readTogether, getFollowQueue, setFollowQueue, setRoomDescription, recordMapEdge, setInventoryText, getEdgesForRoom } from './state.js';
+import { readState, recordTurn, getActiveSnapshot, setCompanion, getCompanionSnapshot, setTogether, readTogether, getFollowQueue, setFollowQueue, setRoomDescription, recordMapEdge, setInventoryText, getEdgesForRoom } from './state.js';
 import { dirToRoom } from './exits.js';
 import { translate as translateDefault } from './translator.js';
 import { extractMoves, zone, detectShout } from './companion.js';
@@ -114,6 +114,12 @@ export async function runTurn(deps, chat, type) {
     // 7. COMPANION (position-only second marker), if tracking is on.
     if (settings.companionTracking && deps.companionVM?.loaded) {
         const companionVM = deps.companionVM;
+        // The live companion VM can silently diverge from persisted state (page
+        // reloads, init-order races where the restore was skipped) — observed as
+        // the companion teleporting back to the game's start room. The persisted
+        // snapshot is the source of truth: re-sync the VM before acting on it.
+        const storedCsnap = getCompanionSnapshot(metadata);
+        if (storedCsnap) companionVM.restore(storedCsnap);
         const playerRoom = status.location;
         const playerMoves = extractMoves(cmds);
         const playerDir = playerMoves.length ? playerMoves[playerMoves.length - 1] : null;
