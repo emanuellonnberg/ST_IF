@@ -140,46 +140,84 @@ export async function runTurn(deps, chat, type) {
 
         let companionDir = null;
         const companionOutputs = [];
+        let refusedDark = false;
         let queue = getFollowQueue(metadata).slice();
+
+        // A companion move whose outcome is darkness or death is rolled back: she
+        // is position-only and could never recover (can't pick up a light, can't
+        // resurrect) — so she refuses the step instead, in character.
+        const DARK_OR_DEATH = /pitch black|grue|you have died|\*\*\*\*/i;
+        const safeStep = (cmd) => {
+            const snap = companionVM.save();
+            const out = companionVM.step(cmd);
+            if (DARK_OR_DEATH.test(out)) {
+                companionVM.restore(snap);
+                refusedDark = true;
+                return null;
+            }
+            return out;
+        };
+        const followAll = (cmdList) => {
+            const followed = [];
+            for (const c of cmdList) {
+                const out = safeStep(c);
+                if (out === null) break;          // stop at the edge of the dark
+                companionOutputs.push(out);
+                followed.push(c);
+            }
+            return lastDirOf(followed);
+        };
 
         if (settings.companionAgency) {
             // The companion decides for itself: follow / stay / own-way.
             const decision = await deps.companionDecide(player.text, playerRoom, companionVM.getStatus().location, playerMoveCmds);
             if (decision.action === 'follow') {
-                for (const c of playerMoveCmds) companionOutputs.push(companionVM.step(c));
-                companionDir = lastDirOf(playerMoveCmds);
+                companionDir = followAll(playerMoveCmds);
             } else if (decision.action === 'move' && decision.direction) {
-                companionDir = decision.direction;
-                companionOutputs.push(companionVM.step(decision.direction));
+                const out = safeStep(decision.direction);
+                if (out !== null) {
+                    companionDir = decision.direction;
+                    companionOutputs.push(out);
+                }
             } // 'stay' → no step
             queue = [];   // agency mode does not use the trail queue
         } else {
             // Deterministic zones.
             const z = zone(settings.companionBias);
             if (z === 'glued') {
-                for (const c of playerMoveCmds) companionOutputs.push(companionVM.step(c));
-                companionDir = lastDirOf(playerMoveCmds);
+                companionDir = followAll(playerMoveCmds);
                 queue = [];
             } else if (z === 'trail') {
                 queue.push(...playerMoveCmds);
                 if (queue.length) {
                     const c = queue.shift();
-                    companionOutputs.push(companionVM.step(c));
-                    companionDir = extractMoves([c])[0] ?? null;
+                    const out = safeStep(c);
+                    if (out === null) {
+                        queue = [];               // the rest of the trail leads through the dark
+                    } else {
+                        companionOutputs.push(out);
+                        companionDir = extractMoves([c])[0] ?? null;
+                    }
                 }
             } else { // wander
                 const d = await deps.companionMove(player.text, playerRoom, companionVM.getStatus().location);
                 if (d) {
-                    companionDir = d;
-                    companionOutputs.push(companionVM.step(d));
+                    const out = safeStep(d);
+                    if (out !== null) {
+                        companionDir = d;
+                        companionOutputs.push(out);
+                    }
                 }
                 queue = [];
             }
         }
 
-        const companionScene = companionOutputs.length
+        let companionScene = companionOutputs.length
             ? companionOutputs[companionOutputs.length - 1]
             : companionVM.step('look');
+        if (refusedDark) {
+            companionScene += '\nThe way onward is pitch dark; {{char}} refuses to go further without a light.';
+        }
         const companionStatus = companionVM.getStatus();
         const together = playerRoom === companionStatus.location;
 

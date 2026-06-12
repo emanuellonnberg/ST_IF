@@ -410,3 +410,43 @@ test('trail: queues non-compass room-changing commands', async () => {
     await runTurn(deps, [{ is_user: true, mes: '*climbs through the window*' }], 'normal');
     assert.ok(deps.companionVM.steps.includes('enter window'), 'trail consumed the queued command');
 });
+
+function makeDarkVM(startRoom) {
+    // 'north' leads into darkness: the move "succeeds" but the output is the grue warning.
+    return {
+        loaded: true, room: startRoom, steps: [], restores: [],
+        step(cmd) {
+            this.steps.push(cmd);
+            if (cmd === 'north') { this.room = 'Pitch Dark Place'; return 'It is pitch black. You are likely to be eaten by a grue.'; }
+            if (cmd === 'east') { this.room = 'Deadly Dark'; return '\n    **** You have died ****\n'; }
+            if (cmd === 'look') return `You are at ${this.room}.`;
+            return `You ${cmd}.`;
+        },
+        save() { return this.room; },
+        restore(r) { this.restores.push(r); this.room = r; },
+        getStatus() { return { location: this.room, score: 0, moves: 0 }; },
+    };
+}
+
+test('glued: companion refuses to follow into darkness (step rolled back)', async () => {
+    const deps = makeDeps({ translate: async () => ['north'], vm: makeMovingVM() });   // player moves fine
+    deps.companionVM = makeDarkVM('Start');                                            // her world is dark up north
+    deps.settings = { strictness: 'strict', injectStateOnRp: false, companionTracking: true, companionBias: 0.8 };
+    const { setCompanion } = await import('../state.js');
+    setCompanion(deps.metadata, { snapshot: 'Start', summary: { location: 'Start' } });   // fake snapshots are room names
+    await runTurn(deps, [{ is_user: true, mes: 'I go north' }], 'normal');
+    assert.equal(deps.companionVM.room, 'Start', 'she stayed put');
+    assert.ok(deps.companionVM.restores.includes('Start'), 'the dark step was rolled back');
+    assert.match(deps._calls.setPrompt[0], /pitch dark|without a light/i, 'canon explains the refusal');
+});
+
+test('wander: companion move into a deadly room is rolled back', async () => {
+    const deps = makeDeps({ translate: async () => [] });
+    deps.companionVM = makeDarkVM('Clearing');
+    deps.companionMove = async () => 'east';     // wander brain picks the deadly way
+    deps.settings = { strictness: 'strict', injectStateOnRp: true, companionTracking: true, companionBias: 0.2 };
+    const { setCompanion } = await import('../state.js');
+    setCompanion(deps.metadata, { snapshot: 'Clearing', summary: { location: 'Clearing' } });
+    await runTurn(deps, [{ is_user: true, mes: 'I wait' }], 'normal');
+    assert.equal(deps.companionVM.room, 'Clearing', 'death step rolled back; she lives');
+});
