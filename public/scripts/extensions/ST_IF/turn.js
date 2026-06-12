@@ -70,14 +70,19 @@ export async function runTurn(deps, chat, type) {
     const statusForPrompt = vm.getStatus();
     const cmds = await translate(player.text, statusForPrompt, settings.strictness);
 
-    // 5. STEP VM — recording learned map edges per step (move that changed rooms).
+    // 5. STEP VM — collecting the commands that actually changed the player's room
+    // (any form: 'north', 'enter window', 'climb tree'), and learning compass edges.
     const outputs = [];
+    const playerMoveCmds = [];
     let prevLoc = statusForPrompt.location;
     for (const cmd of cmds) {
         outputs.push(vm.step(cmd));
         const nowLoc = vm.getStatus().location;
-        const dir = extractMoves([cmd])[0];
-        if (dir && nowLoc !== prevLoc) recordMapEdge(metadata, prevLoc, dir, nowLoc);
+        if (nowLoc !== prevLoc) {
+            playerMoveCmds.push(cmd);
+            const dir = extractMoves([cmd])[0];
+            if (dir) recordMapEdge(metadata, prevLoc, dir, nowLoc);
+        }
         prevLoc = nowLoc;
     }
     const status = vm.getStatus();
@@ -121,8 +126,17 @@ export async function runTurn(deps, chat, type) {
         const storedCsnap = getCompanionSnapshot(metadata);
         if (storedCsnap) companionVM.restore(storedCsnap);
         const playerRoom = status.location;
-        const playerMoves = extractMoves(cmds);
-        const playerDir = playerMoves.length ? playerMoves[playerMoves.length - 1] : null;
+        // Follow keys on the commands that actually changed the player's room —
+        // 'enter window' counts just as much as 'north'. Compass tokens are still
+        // extracted for direction cues where they exist.
+        const lastDirOf = (list) => {
+            for (let i = list.length - 1; i >= 0; i--) {
+                const d = extractMoves([list[i]])[0];
+                if (d) return d;
+            }
+            return null;
+        };
+        const playerDir = lastDirOf(playerMoveCmds);
 
         let companionDir = null;
         const companionOutputs = [];
@@ -130,10 +144,10 @@ export async function runTurn(deps, chat, type) {
 
         if (settings.companionAgency) {
             // The companion decides for itself: follow / stay / own-way.
-            const decision = await deps.companionDecide(player.text, playerRoom, companionVM.getStatus().location, playerMoves);
+            const decision = await deps.companionDecide(player.text, playerRoom, companionVM.getStatus().location, playerMoveCmds);
             if (decision.action === 'follow') {
-                for (const d of playerMoves) companionOutputs.push(companionVM.step(d));
-                if (playerMoves.length) companionDir = playerMoves[playerMoves.length - 1];
+                for (const c of playerMoveCmds) companionOutputs.push(companionVM.step(c));
+                companionDir = lastDirOf(playerMoveCmds);
             } else if (decision.action === 'move' && decision.direction) {
                 companionDir = decision.direction;
                 companionOutputs.push(companionVM.step(decision.direction));
@@ -143,14 +157,15 @@ export async function runTurn(deps, chat, type) {
             // Deterministic zones.
             const z = zone(settings.companionBias);
             if (z === 'glued') {
-                for (const d of playerMoves) companionOutputs.push(companionVM.step(d));
-                if (playerMoves.length) companionDir = playerMoves[playerMoves.length - 1];
+                for (const c of playerMoveCmds) companionOutputs.push(companionVM.step(c));
+                companionDir = lastDirOf(playerMoveCmds);
                 queue = [];
             } else if (z === 'trail') {
-                queue.push(...playerMoves);
+                queue.push(...playerMoveCmds);
                 if (queue.length) {
-                    companionDir = queue.shift();
-                    companionOutputs.push(companionVM.step(companionDir));
+                    const c = queue.shift();
+                    companionOutputs.push(companionVM.step(c));
+                    companionDir = extractMoves([c])[0] ?? null;
                 }
             } else { // wander
                 const d = await deps.companionMove(player.text, playerRoom, companionVM.getStatus().location);

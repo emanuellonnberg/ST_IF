@@ -133,20 +133,29 @@ test('tracking off: companionVM untouched', async () => {
     assert.deepEqual(deps.companionVM.steps, []);
 });
 
-test('glued (bias>=0.66): mirrors all player moves, stays together', async () => {
-    const deps = makeDeps({ translate: async () => ['north', 'west'] });
-    deps.companionVM = makeCompanionVM('Cave');
+test('glued (bias>=0.66): mirrors all room-changing moves, ends together', async () => {
+    const deps = makeDeps({ translate: async () => ['north', 'west'], vm: makeMovingVM() });
+    deps.companionVM = makeCompanionVM('Start');
     deps.settings = { strictness: 'strict', injectStateOnRp: false, companionTracking: true, companionBias: 0.8 };
     await runTurn(deps, [{ is_user: true, mes: 'I go north then west' }], 'normal');
     assert.deepEqual(deps.companionVM.steps, ['north', 'west'], 'companion replays both moves');
-    const { getFollowQueue } = await import('../state.js');
+    const { getFollowQueue, readTogether } = await import('../state.js');
     assert.deepEqual(getFollowQueue(deps.metadata), [], 'glued leaves no lag');
-    assert.match(deps._calls.setPrompt[0], /headed west/);
+    assert.equal(readTogether(deps.metadata), true, 'both ended in the same room');
 });
 
-test('trail (mid bias): queues moves, consumes one per turn', async () => {
-    const deps = makeDeps({ translate: async () => ['north', 'west'] });
+test('glued: does NOT mirror a move that failed (room unchanged)', async () => {
+    // makeVM never changes rooms — a blocked 'north' must not walk the companion away.
+    const deps = makeDeps({ translate: async () => ['north'] });
     deps.companionVM = makeCompanionVM('Cave');
+    deps.settings = { strictness: 'strict', injectStateOnRp: false, companionTracking: true, companionBias: 0.8 };
+    await runTurn(deps, [{ is_user: true, mes: 'I go north' }], 'normal');
+    assert.deepEqual(deps.companionVM.steps, ['look'], 'no move replayed, only the scene look');
+});
+
+test('trail (mid bias): queues room-changing moves, consumes one per turn', async () => {
+    const deps = makeDeps({ translate: async () => ['north', 'west'], vm: makeMovingVM() });
+    deps.companionVM = makeCompanionVM('Start');
     deps.settings = { strictness: 'strict', injectStateOnRp: false, companionTracking: true, companionBias: 0.5 };
     await runTurn(deps, [{ is_user: true, mes: 'I go north then west' }], 'normal');
     assert.deepEqual(deps.companionVM.steps, ['north'], 'only the first queued move is consumed');
@@ -165,9 +174,9 @@ test('wander (bias<=0.33): uses the LLM decideMove, ignores player moves', async
     assert.deepEqual(getFollowQueue(deps.metadata), [], 'wander does not queue');
 });
 
-test('agency follow: mirrors all player moves', async () => {
-    const deps = makeDeps({ translate: async () => ['north', 'west'] });
-    deps.companionVM = makeCompanionVM('Cave');
+test('agency follow: mirrors all room-changing moves', async () => {
+    const deps = makeDeps({ translate: async () => ['north', 'west'], vm: makeMovingVM() });
+    deps.companionVM = makeCompanionVM('Start');
     deps.companionDecide = async () => ({ action: 'follow', direction: null });
     deps.settings = { strictness: 'strict', injectStateOnRp: false, companionTracking: true, companionAgency: true, companionBias: 0.8 };
     await runTurn(deps, [{ is_user: true, mes: 'I go north then west' }], 'normal');
@@ -193,8 +202,8 @@ test('agency stay: no movement (only a look to describe the room)', async () => 
 });
 
 test('agency off: zone logic runs, companionDecide is never called', async () => {
-    const deps = makeDeps({ translate: async () => ['north', 'west'] });
-    deps.companionVM = makeCompanionVM('Cave');
+    const deps = makeDeps({ translate: async () => ['north', 'west'], vm: makeMovingVM() });
+    deps.companionVM = makeCompanionVM('Start');
     deps.companionDecide = async () => { throw new Error('must not call agency when off'); };
     deps.settings = { strictness: 'strict', injectStateOnRp: false, companionTracking: true, companionAgency: false, companionBias: 0.5 };
     await runTurn(deps, [{ is_user: true, mes: 'I go north then west' }], 'normal');
@@ -365,4 +374,39 @@ test('companion VM is re-synced from the stored snapshot before acting (reload s
     await runTurn(deps, [{ is_user: true, mes: 'I wait' }], 'normal');
     assert.ok(vmC.restores.includes('SNAP0'), 'restored from the persisted companion snapshot (seeded as SNAP0)');
     assert.ok(vmC.restores.indexOf('SNAP0') === 0, 'stored-snapshot restore happens first, before any stepping');
+});
+
+function makeEnterVM() {
+    // changes rooms on a NON-compass command, like Zork's "enter window"
+    return {
+        loaded: true, room: 'Behind House', steps: [], _snap: 'S',
+        step(cmd) {
+            this.steps.push(cmd);
+            if (cmd === 'enter window') { this.room = 'Kitchen'; return 'Kitchen\nYou are in the kitchen.'; }
+            if (cmd === 'look') return `You are at ${this.room}.`;
+            return `You ${cmd}.`;
+        },
+        save() { return this._snap; },
+        restore(s) { this._snap = s; },
+        getStatus() { return { location: this.room, score: 0, moves: 0 }; },
+    };
+}
+
+test('glued: follows non-compass moves that changed the room (enter window)', async () => {
+    const deps = makeDeps({ translate: async () => ['enter window'], vm: makeEnterVM() });
+    const companion = makeEnterVM();         // same starting room, same world
+    deps.companionVM = companion;
+    deps.settings = { strictness: 'strict', injectStateOnRp: false, companionTracking: true, companionBias: 0.8 };
+    await runTurn(deps, [{ is_user: true, mes: '*climbs through the window*' }], 'normal');
+    assert.ok(companion.steps.includes('enter window'), 'companion replayed the room-changing command');
+    const { readTogether } = await import('../state.js');
+    assert.equal(readTogether(deps.metadata), true, 'still together in the Kitchen');
+});
+
+test('trail: queues non-compass room-changing commands', async () => {
+    const deps = makeDeps({ translate: async () => ['enter window'], vm: makeEnterVM() });
+    deps.companionVM = makeEnterVM();
+    deps.settings = { strictness: 'strict', injectStateOnRp: false, companionTracking: true, companionBias: 0.5 };
+    await runTurn(deps, [{ is_user: true, mes: '*climbs through the window*' }], 'normal');
+    assert.ok(deps.companionVM.steps.includes('enter window'), 'trail consumed the queued command');
 });
