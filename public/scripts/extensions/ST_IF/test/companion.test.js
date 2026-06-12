@@ -121,3 +121,54 @@ test('extractMoves normalizes "go/walk/head <dir>" command forms', () => {
     assert.deepEqual(extractMoves(['climb up']), ['up']);
     assert.deepEqual(extractMoves(['go to the house']), [], 'non-direction stays dropped');
 });
+
+import { buildUsePrompt, decideUse, validateAction } from '../companion.js';
+
+test('use prompt includes scene, player message, executed cmds, and initiative wording', () => {
+    const p = buildUsePrompt('Nausicaä, light the lamp', 'A dark cellar.', ['south'], 'asked');
+    assert.match(p, /light the lamp/);
+    assert.match(p, /dark cellar/);
+    assert.match(p, /south/);
+    assert.match(p, /ONLY if/i);
+    const p2 = buildUsePrompt('x', 'scene', [], 'proactive');
+    assert.match(p2, /whenever/i);
+});
+
+test('decideUse parses a command and null, fails open on garbage/throw', async () => {
+    assert.deepEqual(await decideUse('x', 's', [], 'need', async () => '{"command":"light lantern"}'),
+        { command: 'light lantern' });
+    assert.deepEqual(await decideUse('x', 's', [], 'need', async () => '{"command":null}'),
+        { command: null });
+    assert.deepEqual(await decideUse('x', 's', [], 'need', async () => 'no json'),
+        { command: null });
+    assert.deepEqual(await decideUse('x', 's', [], 'need', async () => { throw new Error('down'); }),
+        { command: null });
+});
+
+test('validateAction: safe level allows allowlisted verbs, rejects others', () => {
+    assert.equal(validateAction('light lantern', 'safe'), 'light lantern');
+    assert.equal(validateAction('open door', 'safe'), 'open door');
+    assert.equal(validateAction('take key', 'safe'), 'take key');
+    assert.equal(validateAction('drop lantern', 'safe'), null);
+    assert.equal(validateAction('attack troll', 'safe'), null);
+    assert.equal(validateAction('give sword to troll', 'safe'), null);
+});
+
+test('validateAction: open level allows in-world verbs but never meta-verbs', () => {
+    assert.equal(validateAction('attack troll', 'open'), 'attack troll');
+    assert.equal(validateAction('drop lantern', 'open'), 'drop lantern');
+    assert.equal(validateAction('restart', 'open'), null);
+    assert.equal(validateAction('quit', 'open'), null);
+    assert.equal(validateAction('save', 'open'), null);
+    assert.equal(validateAction('restore game', 'open'), null);
+    assert.equal(validateAction('undo', 'open'), null);
+});
+
+test('validateAction: rejects multi-command strings and junk', () => {
+    assert.equal(validateAction('open door. take key', 'open'), null);
+    assert.equal(validateAction('open door then go north', 'open'), null);
+    assert.equal(validateAction('open door\ntake key', 'open'), null);
+    assert.equal(validateAction(null, 'safe'), null);
+    assert.equal(validateAction('   ', 'safe'), null);
+    assert.equal(validateAction(42, 'safe'), null);
+});

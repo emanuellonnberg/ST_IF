@@ -122,3 +122,68 @@ export async function decideAgency(playerText, playerRoom, companionRoom, player
     }
     return { action: obj.action, direction: null };
 }
+
+// --- Companion world-actions (run on the canonical player VM while together) ---
+
+const META_VERBS = new Set(['save', 'restore', 'restart', 'quit', 'undo', 'script']);
+const SAFE_VERBS = new Set([
+    'light', 'extinguish', 'open', 'close', 'read', 'take', 'get', 'push', 'pull',
+    'turn', 'ring', 'knock', 'touch', 'examine', 'look', 'search', 'unlock', 'wear',
+    'tie', 'untie',
+]);
+
+const INITIATIVE_NOTE = {
+    asked: 'Act ONLY if {{user}}\'s message explicitly asks {{char}} to do something. Otherwise respond with null.',
+    need: 'Act if {{user}} asks {{char}} to do something, or if the scene has an obvious immediate need {{char}} would naturally handle. Otherwise respond with null.',
+    proactive: 'Act whenever a useful action presents itself; respond with null only if nothing is worth doing.',
+};
+
+export function buildUsePrompt(playerText, sceneDesc, playerCmds, initiative) {
+    const note = INITIATIVE_NOTE[initiative] ?? INITIATIVE_NOTE.need;
+    const done = playerCmds.length ? `Already done this turn by {{user}} (do NOT repeat): ${playerCmds.join('; ')}.` : '';
+    return [
+        'You decide whether a companion character ({{char}}) performs ONE Interactive Fiction parser action this turn.',
+        `Scene: ${sceneDesc}`,
+        `{{user}} said/did: ${playerText}`,
+        done,
+        note,
+        'Respond with ONLY JSON: {"command":"<short imperative parser command>"} or {"command":null}.',
+    ].filter(Boolean).join('\n');
+}
+
+/**
+ * @returns {Promise<{command: string|null}>} fail-open to null on garbage/error.
+ */
+export async function decideUse(playerText, sceneDesc, playerCmds, initiative, generate) {
+    let raw;
+    try {
+        raw = await generate(buildUsePrompt(playerText, sceneDesc, playerCmds, initiative));
+    } catch {
+        return { command: null };
+    }
+    const text = String(raw ?? '');
+    const start = text.indexOf('{');
+    const end = text.lastIndexOf('}');
+    if (start === -1 || end === -1 || end < start) return { command: null };
+    try {
+        const obj = JSON.parse(text.slice(start, end + 1));
+        return { command: typeof obj.command === 'string' && obj.command.trim() ? obj.command.trim() : null };
+    } catch {
+        return { command: null };
+    }
+}
+
+/**
+ * Validate a companion action command against the safety level.
+ * @returns {string|null} the cleaned command, or null if rejected.
+ */
+export function validateAction(command, safety) {
+    if (typeof command !== 'string') return null;
+    const cmd = command.trim();
+    if (!cmd) return null;
+    if (/[\n.;]|\bthen\b/i.test(cmd)) return null;            // one command max
+    const verb = cmd.split(/\s+/)[0].toLowerCase();
+    if (META_VERBS.has(verb)) return null;                    // never touch the session
+    if (safety === 'safe' && !SAFE_VERBS.has(verb)) return null;
+    return cmd;
+}
