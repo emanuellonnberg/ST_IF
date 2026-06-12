@@ -450,3 +450,71 @@ test('wander: companion move into a deadly room is rolled back', async () => {
     await runTurn(deps, [{ is_user: true, mes: 'I wait' }], 'normal');
     assert.equal(deps.companionVM.room, 'Clearing', 'death step rolled back; she lives');
 });
+
+function makeActVM() {
+    // a player-VM fake: 'light lantern' works, 'pull lever' kills you
+    return {
+        loaded: true, room: 'Cellar', steps: [], restores: [], _state: 'PSNAP',
+        step(cmd) {
+            this.steps.push(cmd);
+            if (cmd === 'light lantern') { this._state = 'PSNAP+lit'; return 'The brass lantern is now on.'; }
+            if (cmd === 'pull lever') { this._state = 'DEAD'; return '\n    **** You have died ****\n'; }
+            if (cmd === 'look') return 'Cellar\nA dark and damp cellar.';
+            return `You ${cmd}.`;
+        },
+        save() { return this._state; },
+        restore(s) { this.restores.push(s); this._state = s; },
+        getStatus() { return { location: this.room, score: 25, moves: 10 }; },
+    };
+}
+
+function actDeps(useCmd, vm) {
+    const deps = makeDeps({ translate: async () => ['look'], vm });
+    deps.companionVM = makeCompanionVM('Cellar');                 // same room → together
+    deps.companionUse = async () => ({ command: useCmd });
+    deps.settings = { strictness: 'strict', injectStateOnRp: false, companionTracking: true, companionBias: 0.8, companionActs: true, companionActionSafety: 'safe' };
+    return deps;
+}
+
+test('together + acts: her validated action runs on the player VM and is attributed', async () => {
+    const vm = makeActVM();
+    const deps = actDeps('light lantern', vm);
+    await runTurn(deps, [{ is_user: true, mes: 'Nausicaä, light the lamp' }], 'normal');
+    assert.ok(vm.steps.includes('light lantern'), 'her command executed on the canonical VM');
+    assert.match(deps._calls.setPrompt[0], /light lantern/, 'canon attributes the action');
+    assert.match(deps._calls.setPrompt[0], /brass lantern is now on/i, 'her result joined the outputs');
+    const s = readState(deps.metadata);
+    assert.equal(s.snapshot, 'PSNAP+lit', 'canonical snapshot re-persisted with her change');
+    assert.equal(s.history[s.history.length - 1].companionCmd, 'light lantern', 'recorded for swipe reuse');
+});
+
+test('death outcome rolls her action back', async () => {
+    const vm = makeActVM();
+    const deps = actDeps('pull lever', vm);
+    deps.settings.companionActionSafety = 'open';
+    await runTurn(deps, [{ is_user: true, mes: 'try the lever' }], 'normal');
+    assert.ok(vm.restores.includes('PSNAP'), 'rolled back to the pre-action snapshot');
+    assert.equal(readState(deps.metadata).snapshot, 'PSNAP', 'canonical snapshot unchanged');
+    assert.doesNotMatch(deps._calls.setPrompt[0] ?? '', /performed by \{\{char\}\}/, 'no attribution');
+});
+
+test('blocked verb never executes', async () => {
+    const vm = makeActVM();
+    const deps = actDeps('drop lantern', vm);
+    await runTurn(deps, [{ is_user: true, mes: 'hold this' }], 'normal');
+    assert.ok(!vm.steps.includes('drop lantern'));
+});
+
+test('acts toggle off / apart: companionUse never called', async () => {
+    const vm = makeActVM();
+    const depsOff = actDeps('light lantern', vm);
+    depsOff.settings.companionActs = false;
+    depsOff.companionUse = async () => { throw new Error('must not be called'); };
+    await runTurn(depsOff, [{ is_user: true, mes: 'x' }], 'normal');
+
+    const depsApart = actDeps('light lantern', makeActVM());
+    depsApart.companionVM = makeCompanionVM('Elsewhere');
+    depsApart.companionUse = async () => { throw new Error('must not be called'); };
+    await runTurn(depsApart, [{ is_user: true, mes: 'x' }], 'normal');
+    assert.ok(true);
+});

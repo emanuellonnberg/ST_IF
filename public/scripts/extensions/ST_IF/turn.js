@@ -1,8 +1,8 @@
 // turn.js — orchestrate one chat turn. Pure: all ST/VM deps injected.
-import { readState, recordTurn, getActiveSnapshot, setCompanion, getCompanionSnapshot, setTogether, readTogether, getFollowQueue, setFollowQueue, setRoomDescription, recordMapEdge, setInventoryText, getEdgesForRoom } from './state.js';
+import { readState, recordTurn, getActiveSnapshot, setCompanion, getCompanionSnapshot, setTogether, readTogether, getFollowQueue, setFollowQueue, setRoomDescription, getRoomDescription, recordMapEdge, setInventoryText, getEdgesForRoom } from './state.js';
 import { dirToRoom } from './exits.js';
 import { translate as translateDefault } from './translator.js';
-import { extractMoves, zone, detectShout } from './companion.js';
+import { extractMoves, zone, detectShout, validateAction } from './companion.js';
 import { buildCanonBlock, buildApartCanonBlock } from './canon.js';
 import { compactInventory } from './clean.js';
 
@@ -46,6 +46,7 @@ export async function runTurn(deps, chat, type) {
             status,
             ranCommands: (lastTurn.cmds ?? []).length > 0,
             injectStateOnRp: settings.injectStateOnRp,
+            companionActionCmd: lastTurn.companionCmd ?? null,
         });
         if (block) setPrompt(block);
         // Swipes rebuild fresh prompt copies: if the pair is apart, hide the
@@ -221,11 +222,36 @@ export async function runTurn(deps, chat, type) {
         const companionStatus = companionVM.getStatus();
         const together = playerRoom === companionStatus.location;
 
+        // 7b. COMPANION ACTION — while together she may act on the CANONICAL world.
+        let companionActionCmd = null;
+        let canonSnap = snapshot;
+        if (together && settings.companionActs && deps.companionUse) {
+            const decision = await deps.companionUse(player.text, getRoomDescription(metadata) || outputs.join('\n'), cmds);
+            const actCmd = validateAction(decision?.command, settings.companionActionSafety);
+            if (actCmd) {
+                const preSnap = vm.save();
+                const out = vm.step(actCmd);
+                if (/you have died|\*\*\*\*/i.test(out)) {
+                    vm.restore(preSnap);                  // her action would kill the avatar — dropped
+                } else {
+                    companionActionCmd = actCmd;
+                    outputs.push(out);
+                    // The world changed after the canonical persist — re-persist.
+                    const s2 = readState(metadata);
+                    canonSnap = vm.save();
+                    s2.snapshot = canonSnap;
+                    s2.summary = vm.getStatus();
+                    const last = s2.history[s2.history.length - 1];
+                    if (last) { last.outputs = outputs; last.companionCmd = actCmd; }
+                }
+            }
+        }
+
         if (together) {
             // While together, the companion shares the player's world (inherits puzzle
             // progress — unlocked doors, taken items); sync its VM to the player's snapshot.
-            companionVM.restore(snapshot);
-            setCompanion(metadata, { snapshot, summary: companionVM.getStatus() });
+            companionVM.restore(canonSnap);
+            setCompanion(metadata, { snapshot: canonSnap, summary: companionVM.getStatus() });
         } else {
             setCompanion(metadata, { snapshot: companionVM.save(), summary: companionStatus });
         }
@@ -234,7 +260,8 @@ export async function runTurn(deps, chat, type) {
         save();
 
         if (together) {
-            const block = buildCanonBlock({ outputs, status, ranCommands: cmds.length > 0, injectStateOnRp: settings.injectStateOnRp, companionPresent: true });
+            const statusForCanon = companionActionCmd ? vm.getStatus() : status;
+            const block = buildCanonBlock({ outputs, status: statusForCanon, ranCommands: cmds.length > 0, injectStateOnRp: settings.injectStateOnRp, companionPresent: true, companionActionCmd });
             if (block) setPrompt(block);
         } else {
             const playerShouted = detectShout(player.text);
