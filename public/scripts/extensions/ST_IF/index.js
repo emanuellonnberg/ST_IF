@@ -138,21 +138,35 @@ function renderHud() {
     el.querySelector('#st_if_hud_comp').textContent = apart ? `· 👥 ${compRoom}` : '';
 }
 
+// GENERATION_ENDED also fires for OUR OWN quiet extraction call, which would
+// re-trigger extraction before the cache write lands (observed: duplicate
+// identical requests; a persistent parse failure would loop forever and hammer
+// the backend). Guard with an in-flight flag and a once-per-room+desc attempt
+// marker — a failed parse retries only when the room or its description changes.
+let exitsExtractionInFlight = false;
+let exitsLastAttemptKey = null;
+
 /** Fire-and-forget: extract exits for the current room if not cached yet. */
 function ensureExitsExtracted() {
     const ctx = getContext();
     const s = readState(ctx.chatMetadata);
     const room = s?.summary?.location;
     const desc = getRoomDescription(ctx.chatMetadata);
-    if (!room || !desc || getExitsForRoom(ctx.chatMetadata, room, desc) !== undefined) return;
+    if (!room || !desc || exitsExtractionInFlight) return;
+    if (getExitsForRoom(ctx.chatMetadata, room, desc) !== undefined) return;
+    const attemptKey = `${room}::${desc.length}`;
+    if (exitsLastAttemptKey === attemptKey) return;
+    exitsLastAttemptKey = attemptKey;
+    exitsExtractionInFlight = true;
     extractExits(desc, (prompt) => generateQuietPrompt({ quietPrompt: prompt, responseLength: 60, skipWIAN: true }))
         .then((exits) => {
-            if (exits === null) return;            // parse failure — leave uncached, retry later
+            if (exits === null) return;            // parse failure — retry on next room/desc change
             setExitsForRoom(ctx.chatMetadata, room, exits, desc);
             saveMetadataDebounced();
             renderHud();
         })
-        .catch((e) => console.warn('[ST_IF] exits extraction failed', e));
+        .catch((e) => console.warn('[ST_IF] exits extraction failed', e))
+        .finally(() => { exitsExtractionInFlight = false; });
 }
 
 /** Dev-mode: surface the opening scene as a toast when "Show raw game output" is on. */
