@@ -144,3 +144,22 @@ test('apart shout stays vague without a known direction', () => {
     const b = buildApartCanonBlock({ companionRoom: 'Cellar', companionScene: '', playerLocation: 'Hall', playerShouted: true, shoutDir: null });
     assert.match(b, /somewhere beyond this room/i);
 });
+
+test('together canon attributes a companion action when given', () => {
+    const b = buildCanonBlock({
+        outputs: ['Taken.', 'The brass lantern is now on.'],
+        status: { location: 'Cellar', score: 25, moves: 10 },
+        ranCommands: true, injectStateOnRp: false,
+        companionPresent: true, companionActionCmd: 'light lantern',
+    });
+    assert.match(b, /"light lantern".*\{\{char\}\}|\{\{char\}\}.*"light lantern"/);
+    assert.match(b, /deed|performed|did/i);
+});
+
+test('no attribution line without a companion action', () => {
+    const b = buildCanonBlock({
+        outputs: ['Taken.'], status: { location: 'Cellar', score: 25, moves: 10 },
+        ranCommands: true, injectStateOnRp: false, companionPresent: true,
+    });
+    assert.doesNotMatch(b, /deed/i);
+});

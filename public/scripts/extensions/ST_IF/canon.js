@@ -8,10 +8,10 @@ function statusLine(status) {
 }
 
 /**
- * @param {{outputs: string[], status: {location:string, score:number|null, moves:number|null}, ranCommands: boolean, injectStateOnRp: boolean, companionPresent?: boolean}} args
+ * @param {{outputs: string[], status: {location:string, score:number|null, moves:number|null}, ranCommands: boolean, injectStateOnRp: boolean, companionPresent?: boolean, companionActionCmd?: string|null}} args
  * @returns {string} canon block, or '' when nothing should be injected
  */
-export function buildCanonBlock({ outputs, status, ranCommands, injectStateOnRp, companionPresent }) {
+export function buildCanonBlock({ outputs, status, ranCommands, injectStateOnRp, companionPresent, companionActionCmd }) {
     if (!ranCommands) {
         if (!injectStateOnRp) return '';
         return `[GAME STATE — ground truth, do not contradict]\n${statusLine(status)}`;
@@ -22,6 +22,7 @@ export function buildCanonBlock({ outputs, status, ranCommands, injectStateOnRp,
         `Action result: ${result}`,
         statusLine(status),
     ];
+    if (companionActionCmd) lines.push(`The action "${companionActionCmd}" was performed by {{char}} — its result above is {{char}}'s own deed; narrate it as theirs.`);
     if (companionPresent) lines.push('{{char}} is here with you.');
     return lines.join('\n');
 }
