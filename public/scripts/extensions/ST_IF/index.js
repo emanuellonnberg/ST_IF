@@ -9,7 +9,7 @@ import { ARGUMENT_TYPE, SlashCommandArgument } from '../../slash-commands/SlashC
 
 import { IFVM } from './vm.js';
 import { translate } from './translator.js';
-import { decideMove, decideAgency } from './companion.js';
+import { decideMove, decideAgency, decideUse } from './companion.js';
 import { runTurn } from './turn.js';
 import { readState, initState, getActiveSnapshot, rewindTo, KEY, setCompanion, getCompanionSnapshot, getRoomDescription, setRoomDescription, getInventoryText, getExitsForRoom, setExitsForRoom, getEdgesForRoom, readTogether } from './state.js';
 import { loadSettings, getSettings, wireSettingsUI, base64ToBytes } from './settings.js';
@@ -35,8 +35,11 @@ function buildDeps() {
         clearPrompt: () =>
             setExtensionPrompt(KEY, '', extension_prompt_types.NONE, 0),
         save: () => saveMetadataDebounced(),
-        settings: { strictness: s.strictness, injectStateOnRp: s.injectStateOnRp, companionTracking: s.companionTracking, companionBias: s.companionBias, companionAgency: s.companionAgency },
+        settings: { strictness: s.strictness, injectStateOnRp: s.injectStateOnRp, companionTracking: s.companionTracking, companionBias: s.companionBias, companionAgency: s.companionAgency, companionActs: s.companionActs, companionActionSafety: s.companionActionSafety },
         companionVM,
+        companionUse: (playerText, scene, playerCmds) =>
+            decideUse(playerText, scene, playerCmds, getSettings().companionInitiative,
+                (prompt) => generateQuietPrompt({ quietPrompt: prompt, responseLength: 40, skipWIAN: true })),
         companionMove: (playerText, playerRoom, companionRoom) =>
             decideMove(playerText, playerRoom, companionRoom, getSettings().companionBias,
                 (prompt) => generateQuietPrompt({ quietPrompt: prompt, responseLength: 40, skipWIAN: true })),

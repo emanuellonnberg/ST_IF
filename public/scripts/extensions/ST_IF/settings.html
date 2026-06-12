@@ -38,6 +38,24 @@
                 <span>Show game HUD (location / exits / inventory)</span>
             </label>
 
+            <label class="checkbox_label" title="While together, the companion may perform one game action per turn (it really happens in the world).">
+                <input id="st_if_acts" type="checkbox" />
+                <span>Companion can act (use things)</span>
+            </label>
+
+            <label for="st_if_initiative">Companion initiative</label>
+            <select id="st_if_initiative" class="text_pole">
+                <option value="asked">Only when asked</option>
+                <option value="need">Asked or obvious need</option>
+                <option value="proactive">Fully proactive</option>
+            </select>
+
+            <label for="st_if_act_safety">Action safety</label>
+            <select id="st_if_act_safety" class="text_pole">
+                <option value="safe">Safe verbs only</option>
+                <option value="open">Unrestricted (still no save/restart)</option>
+            </select>
+
             <label for="st_if_strictness">Translator strictness</label>
             <select id="st_if_strictness" class="text_pole">
                 <option value="strict">Strict (only clear actions)</option>

@@ -20,6 +20,9 @@ export const defaultSettings = {
     companionBias: 0.7,     // 0 = wanders freely, 1 = stays glued to the player
     companionAgency: false, // LLM decides follow/stay/move instead of the deterministic zones
     showHud: true,          // floating exits/inventory strip above the chat input
+    companionActs: false,            // companion may act on the world while together
+    companionInitiative: 'need',     // asked | need | proactive
+    companionActionSafety: 'safe',   // safe (verb allowlist) | open
     storyName: '',
     storyBase64: '',   // the .z5/.z8 bytes, base64
 };
@@ -78,6 +81,15 @@ export function wireSettingsUI(onStoryLoaded) {
     $('#st_if_hud_toggle').prop('checked', s.showHud).on('change', function () {
         s.showHud = $(this).prop('checked'); saveSettingsDebounced();
         document.getElementById('st_if_hud')?.classList.toggle('st_if_hidden', !s.showHud);
+    });
+    $('#st_if_acts').prop('checked', s.companionActs).on('change', function () {
+        s.companionActs = $(this).prop('checked'); saveSettingsDebounced();
+    });
+    $('#st_if_initiative').val(s.companionInitiative).on('change', function () {
+        s.companionInitiative = String($(this).val()); saveSettingsDebounced();
+    });
+    $('#st_if_act_safety').val(s.companionActionSafety).on('change', function () {
+        s.companionActionSafety = String($(this).val()); saveSettingsDebounced();
     });
     $('#st_if_strictness').val(s.strictness).on('change', function () {
         s.strictness = String($(this).val()); saveSettingsDebounced();

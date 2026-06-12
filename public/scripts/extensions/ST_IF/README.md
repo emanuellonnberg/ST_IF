@@ -93,6 +93,15 @@ separate from you. Enable **Companion location tracking** in the panel.
     direction).
 - When you separate, the canon names the departure direction — "{{user}} headed north as
   you parted", and the player-room note says "{{char}} has just left, heading <dir>".
+- **Companion can act (use things)** — optional toggle, off by default. While you're
+  **together**, the companion may perform one real game action per turn (light the
+  lantern, open a door, pick something up) — it genuinely happens in the shared world
+  and the narration credits her. **Companion initiative** sets when she acts (only when
+  asked / asked or obvious need / fully proactive); **Action safety** limits what
+  (safe verb allowlist vs unrestricted — `save`/`restart`/`quit` are always blocked,
+  and any action that would kill you is rolled back). While apart she cannot affect
+  the real world (her fork is overwritten at reunion); inventory is mechanically
+  shared — "she carries it" is narration.
 - **Companion can choose (agency)** — optional toggle. Off = the deterministic zones
   above. On = the companion decides for itself each turn (follow you, hang back, or go
   its own way), and the slider becomes its *clinginess lean*: high = sticks with you but
