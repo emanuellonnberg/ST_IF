@@ -1,0 +1,8 @@
+# Copyrighted Infocom / interactive-fiction story files must NOT be committed.
+# Only Advent.z5 (Colossal Cave Adventure, public domain) is bundled for the tests.
+*.z3
+*.z4
+*.z5
+*.z8
+*.zblorb
+!Advent.z5
