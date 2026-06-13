@@ -14,7 +14,10 @@ room + portable light, a switchable lamp, and takeable objects.
   `detergent` into the washing machine, `turn on washer` (the door locks mid-cycle), wait
   out the wash, then dry the wet clothes on the radiator and `wear` them. The Living Room
   has a working `tv` (`change channel` to cycle programmes) and a `stereo` (`play jazz` /
-  `play rock` / `play classical`), each with ambient per-turn output while on.
+  `play rock` / `play classical`), each with ambient per-turn output while on. Extras: a
+  Kitchen `fridge` with ingredients (stir the `butter` through cooked spaghetti for a
+  richer eat), a Bedroom `wardrobe` with a coat and slippers to `wear`, and a Bathroom
+  `shower` you must turn on before you can `bathe`.
 - `garden.inf` / `garden.z5` — outdoors: Porch hub, Lawn, Greenhouse, Pond, dark Toolshed;
   lantern, fountain, trowel.
 

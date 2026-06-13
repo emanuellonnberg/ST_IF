@@ -25,6 +25,15 @@ Include "VerbLib";
    move radiator to Bathroom;
    move laundry to Bathroom;
    move detergent to Bathroom;
+   move fridge to Kitchen;
+   move egg to fridge;
+   move butter to fridge;
+   move milk to fridge;
+   move wardrobe to Bedroom;
+   move coat to wardrobe;
+   move slippers to wardrobe;
+   move shower to Bathroom;
+   move duck to Bathroom;
    "^You are home. Wander around and try things.^";
 ];
 
@@ -166,6 +175,13 @@ Object pot "pot"
                 remove salt;
                 "You stir the salt into the pot.";
              }
+             if (noun == butter) {
+                if (spaghetti notin self || spaghetti.cooked == false)
+                   "Better to butter the pasta once it is cooked.";
+                spaghetti.buttered = true;
+                remove butter;
+                "You stir a knob of butter through the cooked spaghetti.";
+             }
              rfalse;
        ],
   has  container open;
@@ -179,6 +195,7 @@ Object spaghetti "spaghetti"
        ],
        cooked false,
        burnt false,
+       buttered false,
        time_left 0,
        ! Fires 8 turns after the stove is lit (set by StartTimer in stove).
        time_out [;
@@ -193,6 +210,7 @@ Object spaghetti "spaghetti"
           Eat:
              if (self.burnt) "Charred to ash. Inedible.";
              if (self.cooked == false) "You crunch a few raw, brittle strands. Unpleasant — best cooked first.";
+             if (self.buttered) { remove self; "You eat the rich, buttery spaghetti. Wonderful."; }
              if (pot.salted) { remove self; "You eat the warm, well-salted spaghetti. Delicious."; }
              remove self;
              "You eat the spaghetti. Edible, if a little bland.";
@@ -391,6 +409,63 @@ Object stereo "stereo"
        ],
   has  static switchable;
 
+! ---- Kitchen: fridge + ingredients -----------------------------------------
+
+Object fridge "refrigerator"
+  with name 'fridge' 'refrigerator' 'freezer' 'icebox',
+       description "A humming refrigerator, cold air seeping from the seal.",
+  has  static container openable;
+
+Object egg "egg"
+  with name 'egg', description "A cold white egg.",
+  has  edible;
+
+Object butter "pat of butter"
+  with name 'butter' 'pat', description "A foil-wrapped pat of butter.",
+  has  edible;
+
+Object milk "carton of milk"
+  with name 'milk' 'carton', description "A half-full carton of milk.",
+  has  ;
+
+! ---- Bedroom: wardrobe -----------------------------------------------------
+
+Object wardrobe "wardrobe"
+  with name 'wardrobe' 'armoire' 'cupboard',
+       description "A tall oak wardrobe.",
+  has  static container openable;
+
+Object coat "winter coat"
+  with name 'coat' 'winter' 'jacket', description "A heavy winter coat.",
+  has  clothing;
+
+Object slippers "slippers"
+  with name 'slippers' 'slipper', description "A pair of soft slippers.",
+  has  clothing pluralname;
+
+! ---- Bathroom: shower ------------------------------------------------------
+
+Object shower "shower"
+  with name 'shower' 'showerhead' 'tub' 'bath',
+       description [;
+          print "A shower over a small tub.";
+          if (self has on) print " Hot water is running.";
+          new_line; rtrue;
+       ],
+       daemon [;
+          if (self hasnt on) rfalse;
+          "^Hot water patters down from the shower.^";
+       ],
+       before [;
+          SwitchOn: give self on;  StartDaemon(self); "You turn the shower on; water hisses out.";
+          SwitchOff: give self ~on; StopDaemon(self);  "You turn the shower off.";
+       ],
+  has  static switchable;
+
+Object duck "rubber duck"
+  with name 'duck' 'rubber', description "A cheerful yellow rubber duck.",
+  has  ;
+
 Include "Grammar";
 
 ! ---- Custom verbs ----------------------------------------------------------
@@ -442,3 +517,15 @@ Verb 'play'
                     print "You put on "; stereo.trackname(); print ".^"; rtrue; ];
 [ PlayClassicalSub; give stereo on; stereo.track = 3; StartDaemon(stereo);
                     print "You put on "; stereo.trackname(); print ".^"; rtrue; ];
+
+! ---- Shower: wash yourself -------------------------------------------------
+
+[ ShowerSub;
+   if (shower notin location) "There is no shower here.";
+   if (shower hasnt on) "Turn the shower on first.";
+   "You step under the hot water and scrub clean. Refreshed!";
+];
+
+Verb 'shower' 'bathe'
+   *                          -> Shower
+   * noun                     -> Shower;

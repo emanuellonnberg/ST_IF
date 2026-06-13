@@ -312,3 +312,39 @@ test('media: the stereo plays a selected genre', async () => {
     assert.match(vm.step('examine stereo'), /loud rock/i);
     assert.match(vm.step('play classical'), /classical sonata/i);
 });
+
+// --- Fridge tie-in, wardrobe, shower ---------------------------------------
+test('fridge: butter the cooked pasta for a richer result', async () => {
+    const vm = await kitchenReady();
+    vm.step('turn on stove');
+    for (let i = 0; i < 8; i++) vm.step('wait');
+    vm.step('turn off stove');
+    vm.step('open fridge');
+    vm.step('take butter');
+    assert.match(vm.step('put butter in pot'), /butter through the cooked/i);
+    assert.match(vm.step('eat spaghetti'), /buttery|wonderful/i);
+});
+
+test('fridge: buttering uncooked pasta is refused', async () => {
+    const vm = await kitchenReady();           // spaghetti in pot, still raw
+    vm.step('open fridge');
+    vm.step('take butter');
+    assert.match(vm.step('put butter in pot'), /once it is cooked/i);
+});
+
+test('wardrobe: take and wear clothes from the wardrobe', async () => {
+    const vm = new IFVM();
+    await vm.load(apt);
+    vm.step('south');                          // Bedroom
+    vm.step('open wardrobe');
+    assert.match(vm.step('wear coat'), /put on/i);
+});
+
+test('shower: the shower must be running before you can wash', async () => {
+    const vm = new IFVM();
+    await vm.load(apt);
+    vm.step('south'); vm.step('east');         // Bathroom
+    assert.match(vm.step('bathe'), /turn the shower on/i);
+    vm.step('turn on shower');
+    assert.match(vm.step('shower'), /refreshed/i);
+});
