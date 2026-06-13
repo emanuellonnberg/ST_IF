@@ -1,4 +1,5 @@
 [
     { "name": "Apartment (sandbox)", "file": "apartment.z5" },
-    { "name": "Garden (sandbox)", "file": "garden.z5" }
+    { "name": "Garden (sandbox)", "file": "garden.z5" },
+    { "name": "Expanse (empty, growable)", "file": "expanse.z5" }
 ]

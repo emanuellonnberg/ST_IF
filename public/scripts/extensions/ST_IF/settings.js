@@ -23,6 +23,7 @@ export const defaultSettings = {
     companionActs: false,            // companion may act on the world while together
     companionInitiative: 'need',     // asked | need | proactive
     companionActionSafety: 'safe',   // safe (verb allowlist) | open
+    dynamicWorld: false,             // narrator invents rooms on blocked moves (expandable worlds)
     storyName: '',
     storyBase64: '',   // the .z5/.z8 bytes, base64
 };
@@ -90,6 +91,9 @@ export function wireSettingsUI(onStoryLoaded) {
     });
     $('#st_if_act_safety').val(s.companionActionSafety).on('change', function () {
         s.companionActionSafety = String($(this).val()); saveSettingsDebounced();
+    });
+    $('#st_if_dynamic_world').prop('checked', s.dynamicWorld).on('change', function () {
+        s.dynamicWorld = $(this).prop('checked'); saveSettingsDebounced();
     });
     $('#st_if_strictness').val(s.strictness).on('change', function () {
         s.strictness = String($(this).val()); saveSettingsDebounced();

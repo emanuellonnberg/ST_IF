@@ -35,7 +35,16 @@ function buildDeps() {
         clearPrompt: () =>
             setExtensionPrompt(KEY, '', extension_prompt_types.NONE, 0),
         save: () => saveMetadataDebounced(),
-        settings: { strictness: s.strictness, injectStateOnRp: s.injectStateOnRp, companionTracking: s.companionTracking, companionBias: s.companionBias, companionAgency: s.companionAgency, companionActs: s.companionActs, companionActionSafety: s.companionActionSafety },
+        settings: { strictness: s.strictness, injectStateOnRp: s.injectStateOnRp, companionTracking: s.companionTracking, companionBias: s.companionBias, companionAgency: s.companionAgency, companionActs: s.companionActs, companionActionSafety: s.companionActionSafety, dynamicWorld: s.dynamicWorld },
+        // Invent a room when the player walks into the void (dynamic-world mode).
+        // Returns the raw model string; turn.js parses/sanitises it. skipWIAN keeps
+        // World Info out but leaves the character card / scenario in context for theme.
+        generateRoom: (dir, status, _playerText) =>
+            generateQuietPrompt({
+                quietPrompt: `[The player is at "${status.location}" and moves ${dir} into a place that does not exist yet. Invent a room that fits the current story, setting, and tone. Respond with ONLY JSON, no prose: {"name":"short room name","description":"2-3 vivid sentences","objects":[{"name":"one or two word noun","description":"short","takeable":true}]}. Use 0-3 objects; object names must be simple lowercase nouns.]`,
+                responseLength: 200,
+                skipWIAN: true,
+            }),
         companionVM,
         companionUse: (playerText, scene, playerCmds) =>
             decideUse(playerText, scene, playerCmds, getSettings().companionInitiative,
