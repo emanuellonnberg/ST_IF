@@ -143,3 +143,26 @@ test('apartment world: inventory query reflects a taken object', async () => {
     vm.step('take flashlight');
     assert.match(vm.query('inventory'), /flashlight/i);
 });
+
+test('apartment: forces verbose so a revisited room shows the full description', async () => {
+    const vm = new IFVM();
+    await vm.load(apt);
+    vm.step('east');                 // Living Room
+    const back = vm.step('west');    // re-enter Hallway (already visited)
+    assert.match(back, /narrow hallway/i, 'full description on return');
+    assert.ok(back.trim().length > 40, 'not a brief name-only line');
+});
+
+test('apartment: ensureVerbose repairs a brief-lineage snapshot', async () => {
+    const a = new IFVM();
+    await a.load(apt);
+    a.step('brief');
+    const briefSnap = a.save();
+    const b = new IFVM();
+    await b.load(apt);
+    b.restore(briefSnap);
+    b.ensureVerbose();
+    b.step('east');
+    const back = b.step('west');
+    assert.match(back, /narrow hallway/i);
+});
