@@ -1,6 +1,8 @@
 ! apartment.inf — ST_IF sandbox test world. Dedicated to the public domain (CC0).
 ! A small flat to walk around in: a hub hallway, four rooms (one dark), a
-! portable flashlight, a switchable floor lamp, and takeable objects.
+! portable flashlight, a switchable floor lamp, takeable objects, and a working
+! kitchen with a cooking simulation (fill a pot, add spaghetti, heat it on the
+! stove, wait 8 turns for cooked pasta — leave it too long and it burns).
 Constant Story "APARTMENT";
 Constant Headline "^A small ST_IF sandbox apartment.^";
 Include "Parser";
@@ -11,6 +13,12 @@ Include "VerbLib";
    move mug to Kitchen;
    move flashlight to Hallway;
    move lamp to LivingRoom;
+   move stove to Kitchen;
+   move tap to Kitchen;
+   move cupboard to Kitchen;
+   move pot to cupboard;
+   move spaghetti to cupboard;
+   move salt to cupboard;
    "^You are home. Wander around and try things.^";
 ];
 
@@ -20,7 +28,7 @@ Object Hallway "Hallway"
   has light;
 
 Object Kitchen "Kitchen"
-  with description "A small kitchen with a worn table. The hallway is south.",
+  with description "A small kitchen with a worn table, a stove, a sink with a tap, and a cupboard. The hallway is south.",
        s_to Hallway,
   has light;
 
@@ -59,4 +67,150 @@ Object lamp "floor lamp"
        ],
   has switchable static;
 
+! ---- Kitchen: cooking simulation -------------------------------------------
+
+Object stove "stove"
+  with name 'stove' 'cooker' 'hob' 'burner' 'oven',
+       description [;
+          print "A heavy iron stove.";
+          if (self has on) print " A burner glows red-hot.";
+          else print " It is cold.";
+          new_line; rtrue;
+       ],
+       cookcount 0,            ! turns the pot has sat past 'cooked', for burning
+       ! Runs every turn while the stove is lit: ambient bubbling, then burning.
+       daemon [;
+          if (self hasnt on) rfalse;
+          if (pot notin self) rfalse;          ! nothing on the burner
+          if (pot.water == false) rfalse;      ! dry pot, no sound
+          if (spaghetti in pot && spaghetti.cooked && spaghetti.burnt == false) {
+             self.cookcount = self.cookcount + 1;
+             if (self.cookcount >= 4) {
+                spaghetti.burnt = true;
+                pot.water = false;
+                "^A burning stink fills the kitchen — the pot has boiled dry and the
+                 spaghetti is charred to a black, ruined clump.^";
+             }
+             "^The cooked spaghetti hisses as the last of the water boils away.^";
+          }
+          if (spaghetti in pot && spaghetti.cooked == false)
+             "^The water rolls and bubbles around the spaghetti.^";
+          "^Water bubbles in the pot.^";
+       ],
+       before [;
+          SwitchOn:
+             if (pot notin self) "There is nothing on the stove to heat.";
+             if (pot.water == false) "The pot is empty — it would just scorch. Add water first.";
+             give self on;
+             self.cookcount = 0;
+             StartDaemon(self);
+             if (spaghetti in pot && spaghetti.cooked == false && spaghetti.burnt == false)
+                StartTimer(spaghetti, 8);
+             "You light the stove; a burner glows to life.";
+          SwitchOff:
+             give self ~on;
+             StopDaemon(self);
+             StopTimer(spaghetti);
+             "You turn the stove off.";
+       ],
+  has  static supporter switchable;
+
+Object tap "tap"
+  with name 'tap' 'faucet' 'sink' 'water',
+       description "A brass tap over a steel sink. It drips slowly.",
+  has  static;
+
+Object cupboard "cupboard"
+  with name 'cupboard' 'cabinet' 'cupboards',
+       description "A wooden cupboard above the counter.",
+  has  static container openable;
+
+Object pot "pot"
+  with name 'pot' 'pan' 'saucepan',
+       description [;
+          print "A dented steel pot.";
+          if (self.water) print " It holds water";
+          else print " It is empty";
+          if (self.salted) print " (salted)";
+          print ".";
+          if (spaghetti in self) {
+             if (spaghetti.burnt) print " A charred clump of ruined spaghetti is stuck inside.";
+             else if (spaghetti.cooked) print " Cooked spaghetti sits in it.";
+             else print " Dry spaghetti sits in it.";
+          }
+          new_line; rtrue;
+       ],
+       water false,
+       salted false,
+       ! "fill pot" / "put salt in pot" route here; other inserts are normal.
+       before [;
+          Fill:
+             if (tap notin location) "There is no water source here.";
+             if (self.water) "The pot is already full.";
+             self.water = true;
+             "You fill the pot with water at the tap.";
+          Receive:
+             if (noun == salt) {
+                self.salted = true;
+                remove salt;
+                "You stir the salt into the pot.";
+             }
+             rfalse;
+       ],
+  has  container open;
+
+Object spaghetti "spaghetti"
+  with name 'spaghetti' 'pasta' 'noodles' 'bundle',
+       description [;
+          if (self.burnt) "A charred, blackened clump. Ruined.";
+          if (self.cooked) "A nest of soft, steaming cooked spaghetti.";
+          "A brittle bundle of dry spaghetti.";
+       ],
+       cooked false,
+       burnt false,
+       time_left 0,
+       ! Fires 8 turns after the stove is lit (set by StartTimer in stove).
+       time_out [;
+          if (self notin pot || pot notin stove || stove hasnt on || pot.water == false)
+             "^The heat was interrupted; the spaghetti never finished cooking.^";
+          self.cooked = true;
+          if (pot.salted)
+             "^The water boils hard and the spaghetti softens through — perfectly seasoned and cooked.^";
+          "^The spaghetti softens and cooks through, though it could use a pinch of salt.^";
+       ],
+       before [;
+          Eat:
+             if (self.burnt) "Charred to ash. Inedible.";
+             if (self.cooked == false) "You crunch a few raw, brittle strands. Unpleasant — best cooked first.";
+             if (pot.salted) { remove self; "You eat the warm, well-salted spaghetti. Delicious."; }
+             remove self;
+             "You eat the spaghetti. Edible, if a little bland.";
+       ],
+  has  edible;
+
+Object salt "tin of salt"
+  with name 'salt' 'tin' 'shaker' 'seasoning',
+       description "A little tin of table salt.",
+  has  ;
+
 Include "Grammar";
+
+! ---- Custom verbs ----------------------------------------------------------
+! 'fill' is a standard library verb (action Fill, handled in pot.before above);
+! we only Extend it to accept the "fill pot with water" phrasing.
+
+Extend 'fill'
+   * noun 'with' 'water'/'tap' -> Fill;
+
+[ SaltSub;
+   if (salt notin player) "You aren't holding any salt.";
+   if (pot notin location && pot notin player && parent(pot) ~= stove)
+       "There is no pot here to season.";
+   pot.salted = true;
+   remove salt;
+   "You season the pot with salt.";
+];
+
+Verb 'salt' 'season'
+   *                          -> Salt
+   * noun                     -> Salt;

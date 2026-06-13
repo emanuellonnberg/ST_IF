@@ -166,3 +166,68 @@ test('apartment: ensureVerbose repairs a brief-lineage snapshot', async () => {
     const back = b.step('west');
     assert.match(back, /narrow hallway/i);
 });
+
+// --- Kitchen cooking simulation (timers + daemon + state machine) ----------
+// Standard setup: enter Kitchen, get the pot + spaghetti, fill, load, put on
+// the stove. `salt` true also stirs salt in. Leaves the stove OFF.
+async function kitchenReady({ salt = false } = {}) {
+    const vm = new IFVM();
+    await vm.load(apt);
+    vm.step('north');                 // Hallway -> Kitchen
+    vm.step('open cupboard');
+    vm.step('take pot');
+    vm.step('take spaghetti');
+    vm.step('fill pot');
+    if (salt) { vm.step('take salt'); vm.step('put salt in pot'); }
+    vm.step('put spaghetti in pot');
+    vm.step('put pot on stove');
+    return vm;
+}
+
+test('cooking: spaghetti cooks after exactly 8 turns on the lit stove', async () => {
+    const vm = await kitchenReady();
+    vm.step('turn on stove');
+    for (let i = 0; i < 7; i++) {
+        assert.doesNotMatch(vm.step('wait'), /cooks through|cooked and/i, `not cooked yet at turn ${i + 1}`);
+    }
+    assert.match(vm.step('wait'), /cooks through|cooked/i, 'cooked on the 8th turn');
+    assert.match(vm.step('examine pot'), /cooked spaghetti/i);
+});
+
+test('cooking: stove refuses to heat an empty (waterless) pot', async () => {
+    const vm = new IFVM();
+    await vm.load(apt);
+    vm.step('north');
+    vm.step('open cupboard');
+    vm.step('take pot');
+    vm.step('put pot on stove');
+    assert.match(vm.step('turn on stove'), /scorch|add water first/i);
+    assert.doesNotMatch(vm.step('examine pot'), /cooked spaghetti/i);
+});
+
+test('cooking: salt yields a seasoned result', async () => {
+    const vm = await kitchenReady({ salt: true });
+    assert.match(vm.step('examine pot'), /salted/i);
+    vm.step('turn on stove');
+    let out = '';
+    for (let i = 0; i < 8; i++) out = vm.step('wait');
+    assert.match(out, /perfectly seasoned/i);
+});
+
+test('cooking: left too long, the spaghetti burns and the pot boils dry', async () => {
+    const vm = await kitchenReady();
+    vm.step('turn on stove');
+    for (let i = 0; i < 8; i++) vm.step('wait');   // cooked
+    let burned = '';
+    for (let i = 0; i < 5; i++) { const o = vm.step('wait'); if (/charred|boiled dry|burning stink/i.test(o)) { burned = o; break; } }
+    assert.match(burned, /charred|boiled dry|burning stink/i, 'burns within a few turns of overcooking');
+    assert.match(vm.step('examine spaghetti'), /ruined|charred/i);
+});
+
+test('cooking: turning the stove off before 8 turns leaves the pasta uncooked', async () => {
+    const vm = await kitchenReady();
+    vm.step('turn on stove');
+    vm.step('wait'); vm.step('wait');
+    vm.step('turn off stove');
+    assert.match(vm.step('examine spaghetti'), /dry/i, 'interrupted heat never finishes the cook');
+});

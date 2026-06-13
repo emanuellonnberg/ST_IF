@@ -5,7 +5,11 @@ integration-test story. They are *not* games — just maps that exercise movemen
 room + portable light, a switchable lamp, and takeable objects.
 
 - `apartment.inf` / `apartment.z5` — a flat: Hallway hub, Kitchen, Living Room, Bedroom,
-  dark Storage Closet; flashlight, floor lamp, mug.
+  dark Storage Closet; flashlight, floor lamp, mug. The Kitchen has a working cooking
+  sim: open the cupboard, take the pot + spaghetti, `fill pot`, `put spaghetti in pot`,
+  `put pot on stove`, `turn on stove`, then wait 8 turns for cooked pasta. `salt` the pot
+  for a seasoned result; leave it on the heat too long (~4 more turns) and it boils dry and
+  burns. Demonstrates Inform 6 timers (`StartTimer`/`time_out`) + a per-turn daemon.
 - `garden.inf` / `garden.z5` — outdoors: Porch hub, Lawn, Greenhouse, Pond, dark Toolshed;
   lantern, fountain, trowel.
 
