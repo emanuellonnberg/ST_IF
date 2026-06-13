@@ -166,3 +166,317 @@ test('apartment: ensureVerbose repairs a brief-lineage snapshot', async () => {
     const back = b.step('west');
     assert.match(back, /narrow hallway/i);
 });
+
+// --- Kitchen cooking simulation (timers + daemon + state machine) ----------
+// Standard setup: enter Kitchen, get the pot + spaghetti, fill, load, put on
+// the stove. `salt` true also stirs salt in. Leaves the stove OFF.
+async function kitchenReady({ salt = false } = {}) {
+    const vm = new IFVM();
+    await vm.load(apt);
+    vm.step('north');                 // Hallway -> Kitchen
+    vm.step('open cupboard');
+    vm.step('take pot');
+    vm.step('take spaghetti');
+    vm.step('fill pot');
+    if (salt) { vm.step('take salt'); vm.step('put salt in pot'); }
+    vm.step('put spaghetti in pot');
+    vm.step('put pot on stove');
+    return vm;
+}
+
+test('cooking: spaghetti cooks after exactly 8 turns on the lit stove', async () => {
+    const vm = await kitchenReady();
+    vm.step('turn on stove');
+    for (let i = 0; i < 7; i++) {
+        assert.doesNotMatch(vm.step('wait'), /cooks through|cooked and/i, `not cooked yet at turn ${i + 1}`);
+    }
+    assert.match(vm.step('wait'), /cooks through|cooked/i, 'cooked on the 8th turn');
+    assert.match(vm.step('examine pot'), /cooked spaghetti/i);
+});
+
+test('cooking: stove refuses to heat an empty (waterless) pot', async () => {
+    const vm = new IFVM();
+    await vm.load(apt);
+    vm.step('north');
+    vm.step('open cupboard');
+    vm.step('take pot');
+    vm.step('put pot on stove');
+    assert.match(vm.step('turn on stove'), /scorch|add water first/i);
+    assert.doesNotMatch(vm.step('examine pot'), /cooked spaghetti/i);
+});
+
+test('cooking: salt yields a seasoned result', async () => {
+    const vm = await kitchenReady({ salt: true });
+    assert.match(vm.step('examine pot'), /salted/i);
+    vm.step('turn on stove');
+    let out = '';
+    for (let i = 0; i < 8; i++) out = vm.step('wait');
+    assert.match(out, /perfectly seasoned/i);
+});
+
+test('cooking: left too long, the spaghetti burns and the pot boils dry', async () => {
+    const vm = await kitchenReady();
+    vm.step('turn on stove');
+    for (let i = 0; i < 8; i++) vm.step('wait');   // cooked
+    let burned = '';
+    for (let i = 0; i < 5; i++) { const o = vm.step('wait'); if (/charred|boiled dry|burning stink/i.test(o)) { burned = o; break; } }
+    assert.match(burned, /charred|boiled dry|burning stink/i, 'burns within a few turns of overcooking');
+    assert.match(vm.step('examine spaghetti'), /ruined|charred/i);
+});
+
+test('cooking: turning the stove off before 8 turns leaves the pasta uncooked', async () => {
+    const vm = await kitchenReady();
+    vm.step('turn on stove');
+    vm.step('wait'); vm.step('wait');
+    vm.step('turn off stove');
+    assert.match(vm.step('examine spaghetti'), /dry/i, 'interrupted heat never finishes the cook');
+});
+
+// --- Bathroom laundry (wash -> dry -> wear) and Living Room media -----------
+function waitUntil(vm, re, max = 14) {
+    for (let i = 0; i < max; i++) { const o = vm.step('wait'); if (re.test(o)) return o; }
+    return '';
+}
+
+// Enter the Bathroom and load the laundry (and detergent unless soap=false).
+async function washerLoaded({ soap = true } = {}) {
+    const vm = new IFVM();
+    await vm.load(apt);
+    vm.step('south'); vm.step('east');         // Hallway -> Bedroom -> Bathroom
+    vm.step('take laundry');
+    vm.step('put laundry in washer');
+    if (soap) { vm.step('take detergent'); vm.step('put detergent in washer'); }
+    return vm;
+}
+
+test('laundry: a full cycle leaves the clothes clean and wet', async () => {
+    const vm = await washerLoaded();
+    vm.step('turn on washer');
+    assert.match(waitUntil(vm, /cycle ends/i), /fresh, clean/i, 'detergent gives a fresh result');
+    assert.match(vm.step('examine laundry'), /clean.*wet/i);
+});
+
+test('laundry: the door is locked while the cycle runs', async () => {
+    const vm = await washerLoaded();
+    vm.step('turn on washer');
+    assert.match(vm.step('take laundry'), /locked/i);
+});
+
+test('laundry: without detergent the wash comes out grey', async () => {
+    const vm = await washerLoaded({ soap: false });
+    vm.step('turn on washer');
+    assert.match(waitUntil(vm, /cycle ends/i), /grey|no detergent/i);
+});
+
+test('laundry: running an empty machine is refused', async () => {
+    const vm = new IFVM();
+    await vm.load(apt);
+    vm.step('south'); vm.step('east');         // Bathroom, laundry left on the floor
+    assert.match(vm.step('turn on washer'), /nothing in the machine/i);
+});
+
+test('laundry: dry the wet wash on the radiator, then wear it', async () => {
+    const vm = await washerLoaded();
+    vm.step('turn on washer');
+    waitUntil(vm, /cycle ends/i);
+    vm.step('take laundry');
+    assert.match(vm.step('wear laundry'), /wet/i, 'cannot wear sopping clothes');
+    vm.step('put laundry on radiator');
+    assert.match(waitUntil(vm, /warm and dry/i), /warm and dry/i);
+    vm.step('take laundry');
+    assert.match(vm.step('wear laundry'), /put on/i);
+});
+
+test('media: the TV cycles through its channels', async () => {
+    const vm = new IFVM();
+    await vm.load(apt);
+    vm.step('east');                           // Living Room
+    assert.match(vm.step('turn on tv'), /evening news/i);
+    assert.match(vm.step('change channel'), /black-and-white film/i);
+    assert.match(vm.step('change channel'), /fuzzy static/i);
+    assert.match(vm.step('change channel'), /evening news/i, 'wraps back to the first channel');
+});
+
+test('media: changing channel on an off TV is refused', async () => {
+    const vm = new IFVM();
+    await vm.load(apt);
+    vm.step('east');
+    assert.match(vm.step('change channel'), /off/i);
+});
+
+test('media: the stereo plays a selected genre', async () => {
+    const vm = new IFVM();
+    await vm.load(apt);
+    vm.step('east');
+    assert.match(vm.step('play rock'), /loud rock/i);
+    assert.match(vm.step('examine stereo'), /loud rock/i);
+    assert.match(vm.step('play classical'), /classical sonata/i);
+});
+
+// --- Fridge tie-in, wardrobe, shower ---------------------------------------
+test('fridge: butter the cooked pasta for a richer result', async () => {
+    const vm = await kitchenReady();
+    vm.step('turn on stove');
+    for (let i = 0; i < 8; i++) vm.step('wait');
+    vm.step('turn off stove');
+    vm.step('open fridge');
+    vm.step('take butter');
+    assert.match(vm.step('put butter in pot'), /butter through the cooked/i);
+    assert.match(vm.step('eat spaghetti'), /buttery|wonderful/i);
+});
+
+test('fridge: buttering uncooked pasta is refused', async () => {
+    const vm = await kitchenReady();           // spaghetti in pot, still raw
+    vm.step('open fridge');
+    vm.step('take butter');
+    assert.match(vm.step('put butter in pot'), /once it is cooked/i);
+});
+
+test('wardrobe: take and wear clothes from the wardrobe', async () => {
+    const vm = new IFVM();
+    await vm.load(apt);
+    vm.step('south');                          // Bedroom
+    vm.step('open wardrobe');
+    assert.match(vm.step('wear coat'), /put on/i);
+});
+
+test('shower: the shower must be running before you can wash', async () => {
+    const vm = new IFVM();
+    await vm.load(apt);
+    vm.step('south'); vm.step('east');         // Bathroom
+    assert.match(vm.step('bathe'), /turn the shower on/i);
+    vm.step('turn on shower');
+    assert.match(vm.step('shower'), /refreshed/i);
+});
+
+// --- Mud / coffee / sleep loops --------------------------------------------
+test('mud: digging the houseplant dirties you; the shower cleans it', async () => {
+    const vm = new IFVM();
+    await vm.load(apt);
+    vm.step('east');                           // Living Room
+    assert.match(vm.step('dig plant'), /filthy/i);
+    assert.match(vm.step('status'), /filthy/i);
+    vm.step('west'); vm.step('south'); vm.step('east');   // Bathroom
+    vm.step('turn on shower');
+    assert.match(vm.step('bathe'), /clean/i);
+    assert.doesNotMatch(vm.step('status'), /filthy/i);
+});
+
+test('mud: dressing with filthy hands re-soils the clean laundry', async () => {
+    const vm = await washerLoaded();
+    vm.step('turn on washer');
+    waitUntil(vm, /cycle ends/i);
+    vm.step('take laundry');
+    vm.step('put laundry on radiator');
+    waitUntil(vm, /warm and dry/i);
+    vm.step('take laundry');
+    vm.step('west'); vm.step('north'); vm.step('east');   // Living Room
+    vm.step('dig plant');
+    assert.match(vm.step('wear laundry'), /grubby again/i);
+});
+
+test('coffee: brew a mug and drink it to feel rested', async () => {
+    const vm = new IFVM();
+    await vm.load(apt);
+    vm.step('north');                          // Kitchen
+    vm.step('take mug');
+    vm.step('brew coffee');
+    assert.match(waitUntil(vm, /ready/i), /ready/i);
+    assert.match(vm.step('drink coffee'), /awake|alert/i);
+    assert.match(vm.step('status'), /rested/i);
+});
+
+test('sleep: napping in the bed leaves you rested; no bed elsewhere', async () => {
+    const vm = new IFVM();
+    await vm.load(apt);
+    assert.match(vm.step('sleep'), /no bed/i);            // Hallway
+    vm.step('south');                          // Bedroom
+    assert.match(vm.step('sleep'), /rested/i);
+    assert.match(vm.step('status'), /rested/i);
+});
+
+// --- The cat, Mochi --------------------------------------------------------
+test('cat: Mochi follows you from room to room', async () => {
+    const vm = new IFVM();
+    await vm.load(apt);
+    vm.step('east');                           // Living Room (Mochi starts here)
+    assert.match(vm.step('west'), /Mochi pads in/i, 'she follows into the hallway');
+    assert.match(vm.step('look'), /Mochi/);
+});
+
+test('cat: petting and feeding Mochi milk', async () => {
+    const vm = new IFVM();
+    await vm.load(apt);
+    vm.step('east');
+    assert.match(vm.step('pet cat'), /purr/i);
+    vm.step('west'); vm.step('north');         // Kitchen; she follows
+    vm.step('open fridge'); vm.step('take milk');
+    assert.match(vm.step('give milk to cat'), /laps up the milk/i);
+    assert.match(vm.step('examine mochi'), /full/i);
+});
+
+// --- Front door + outside (landing, street, shop) --------------------------
+test('front door: locked until unlocked with the key, then leads outside', async () => {
+    const vm = new IFVM();
+    await vm.load(apt);
+    assert.match(vm.step('out'), /in the way|locked/i);   // blocked
+    vm.step('take key');
+    vm.step('unlock door with key');
+    vm.step('open door');
+    assert.match(vm.step('out'), /Landing/);
+});
+
+test('outside: read the mailbox letter, reach the street and the corner shop', async () => {
+    const vm = new IFVM();
+    await vm.load(apt);
+    vm.step('take key'); vm.step('unlock door with key'); vm.step('open door'); vm.step('out');
+    vm.step('open mailbox');
+    assert.match(vm.step('read letter'), /welcome/i);
+    assert.match(vm.step('down'), /Street/);
+    assert.match(vm.step('east'), /Corner Shop/);
+    assert.match(vm.step('ask shopkeeper about weather'), /weather|step/i);
+});
+
+test('cat: Mochi will not follow you out the front door', async () => {
+    const vm = new IFVM();
+    await vm.load(apt);
+    vm.step('east'); vm.step('west');          // make sure she is trailing
+    vm.step('take key'); vm.step('unlock door with key'); vm.step('open door');
+    vm.step('out');                            // Landing
+    assert.doesNotMatch(vm.step('look'), /Mochi/, 'she stays inside the flat');
+});
+
+// --- Deeper cooking: fry an egg, wash up ------------------------------------
+test('cooking: fry an egg on the stove and eat it', async () => {
+    const vm = new IFVM();
+    await vm.load(apt);
+    vm.step('north');                          // Kitchen
+    vm.step('open cupboard'); vm.step('take pot');
+    vm.step('open fridge'); vm.step('take egg');
+    vm.step('put egg in pot'); vm.step('put pot on stove'); vm.step('turn on stove');
+    assert.match(waitUntil(vm, /fried|sets into/i), /fried|sets into/i);
+    vm.step('turn off stove');
+    assert.match(vm.step('eat egg'), /tasty/i);
+});
+
+test('cooking: eating leaves a dirty pot you wash at the tap', async () => {
+    const vm = await kitchenReady();
+    vm.step('turn on stove');
+    for (let i = 0; i < 8; i++) vm.step('wait');
+    vm.step('turn off stove');
+    vm.step('eat spaghetti');
+    assert.match(vm.step('examine pot'), /dried-on food|crusted/i);
+    assert.match(vm.step('wash pot'), /clean/i);
+    assert.doesNotMatch(vm.step('examine pot'), /crusted|dried-on/i);
+});
+
+test('coffee: the mug is stained after use and washes clean', async () => {
+    const vm = new IFVM();
+    await vm.load(apt);
+    vm.step('north');
+    vm.step('take mug'); vm.step('brew coffee');
+    waitUntil(vm, /ready/i);
+    vm.step('drink coffee');
+    assert.match(vm.step('examine mug'), /dregs|stained/i);
+    assert.match(vm.step('wash mug'), /clean/i);
+});

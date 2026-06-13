@@ -1,37 +1,94 @@
 ! apartment.inf — ST_IF sandbox test world. Dedicated to the public domain (CC0).
 ! A small flat to walk around in: a hub hallway, four rooms (one dark), a
-! portable flashlight, a switchable floor lamp, and takeable objects.
+! portable flashlight, a switchable floor lamp, takeable objects, and a working
+! kitchen with a cooking simulation (fill a pot, add spaghetti, heat it on the
+! stove, wait 8 turns for cooked pasta — leave it too long and it burns).
 Constant Story "APARTMENT";
 Constant Headline "^A small ST_IF sandbox apartment.^";
 Include "Parser";
 Include "VerbLib";
+
+Global mucky = 0;     ! player's hands are dirty (from the plant soil)
+Global rested = 0;    ! player has had coffee or a nap
 
 [ Initialise;
    location = Hallway;
    move mug to Kitchen;
    move flashlight to Hallway;
    move lamp to LivingRoom;
+   move stove to Kitchen;
+   move tap to Kitchen;
+   move cupboard to Kitchen;
+   move pot to cupboard;
+   move spaghetti to cupboard;
+   move salt to cupboard;
+   move tv to LivingRoom;
+   move stereo to LivingRoom;
+   move washer to Bathroom;
+   move radiator to Bathroom;
+   move laundry to Bathroom;
+   move detergent to Bathroom;
+   move fridge to Kitchen;
+   move egg to fridge;
+   move butter to fridge;
+   move milk to fridge;
+   move wardrobe to Bedroom;
+   move coat to wardrobe;
+   move slippers to wardrobe;
+   move shower to Bathroom;
+   move duck to Bathroom;
+   move coffeemaker to Kitchen;
+   move houseplant to LivingRoom;
+   move bed to Bedroom;
+   move cat to LivingRoom;
+   StartDaemon(cat);
+   move doorkey to Hallway;
+   move mailbox to Landing;
+   move letter to mailbox;
+   move shopkeeper to Shop;
+   move newspaper to Shop;
+   move coin to Street;
    "^You are home. Wander around and try things.^";
 ];
 
 Object Hallway "Hallway"
-  with description "A narrow hallway. The living room is east, the kitchen north, the bedroom south, and a closet door is west.",
-       n_to Kitchen, e_to LivingRoom, s_to Bedroom, w_to Closet,
+  with description "A narrow hallway. The living room is east, the kitchen north, the bedroom south, a closet door is west, and the front door leads out.",
+       n_to Kitchen, e_to LivingRoom, s_to Bedroom, w_to Closet, out_to frontdoor,
   has light;
 
 Object Kitchen "Kitchen"
-  with description "A small kitchen with a worn table. The hallway is south.",
+  with description "A small kitchen with a worn table, a stove, a sink with a tap, and a cupboard. The hallway is south.",
        s_to Hallway,
   has light;
 
 Object LivingRoom "Living Room"
-  with description "A cosy living room with a couch. The hallway is west.",
+  with description "A cosy living room with a couch, a television, and a stereo. The hallway is west.",
        w_to Hallway,
   has light;
 
 Object Bedroom "Bedroom"
-  with description "A quiet bedroom with a made bed. The hallway is north.",
-       n_to Hallway,
+  with description "A quiet bedroom with a made bed. The hallway is north; an ensuite bathroom is east.",
+       n_to Hallway, e_to Bathroom,
+  has light;
+
+Object Bathroom "Bathroom"
+  with description "A tiled bathroom with a washing machine and a warm radiator. The bedroom is west.",
+       w_to Bedroom,
+  has light;
+
+Object Landing "Landing"
+  with description "A dim stair landing outside your flat. Your front door is back in to the west; stairs lead down.",
+       in_to frontdoor, w_to frontdoor, d_to Street,
+  has light;
+
+Object Street "Street"
+  with description "A quiet street under a grey sky. Stairs lead up to the flats, and a corner shop stands to the east.",
+       u_to Landing, e_to Shop,
+  has light;
+
+Object Shop "Corner Shop"
+  with description "A cramped corner shop, shelves stacked to the ceiling. The street is back west.",
+       w_to Street,
   has light;
 
 Object Closet "Storage Closet"
@@ -39,7 +96,28 @@ Object Closet "Storage Closet"
        e_to Hallway;
 
 Object mug "ceramic mug"
-  with name 'mug' 'cup' 'ceramic', description "A plain ceramic mug.",
+  with name 'mug' 'cup' 'ceramic' 'coffee',
+       description [;
+          print "A plain ceramic mug.";
+          if (self.coffee) print " It is full of hot, dark coffee.";
+          else if (self.dirty) print " It is stained with coffee dregs.";
+          new_line; rtrue;
+       ],
+       coffee false,
+       dirty false,
+       before [;
+          Drink:
+             if (self.coffee == false) "The mug is empty.";
+             self.coffee = false;
+             self.dirty = true;
+             rested = true;
+             "You drink the hot, bitter coffee. You feel awake and alert.";
+          Rub:                          ! "wash mug" at the sink
+             if (tap notin location) "You need a sink to wash up.";
+             if (self.dirty == false) "The mug is already clean.";
+             self.dirty = false;
+             "You rinse the mug clean under the tap.";
+       ],
   has ;
 
 Object flashlight "flashlight"
@@ -59,4 +137,703 @@ Object lamp "floor lamp"
        ],
   has switchable static;
 
+! ---- Kitchen: cooking simulation -------------------------------------------
+
+Object stove "stove"
+  with name 'stove' 'cooker' 'hob' 'burner' 'oven',
+       description [;
+          print "A heavy iron stove.";
+          if (self has on) print " A burner glows red-hot.";
+          else print " It is cold.";
+          new_line; rtrue;
+       ],
+       cookcount 0,            ! turns the pot has sat past 'cooked', for burning
+       ! Runs every turn while the stove is lit: ambient bubbling, then burning.
+       ! Heat physics run even when the player is elsewhere; ambient lines only
+       ! print while the player is in the kitchen.
+       daemon [;
+          if (self hasnt on) rfalse;
+          if (pot notin self) rfalse;          ! nothing on the burner
+          if (pot.water == false) rfalse;      ! dry pot, no sound
+          if (spaghetti in pot && spaghetti.cooked && spaghetti.burnt == false) {
+             self.cookcount = self.cookcount + 1;
+             if (self.cookcount >= 4) {
+                spaghetti.burnt = true;
+                pot.water = false;
+                if (self in location)
+                   print "^A burning stink fills the kitchen — the pot has boiled dry
+                          and the spaghetti is charred to a black, ruined clump.^";
+                rtrue;
+             }
+             if (self in location)
+                print "^The cooked spaghetti hisses as the last of the water boils away.^";
+             rtrue;
+          }
+          if (self in location) {
+             if (spaghetti in pot && spaghetti.cooked == false)
+                print "^The water rolls and bubbles around the spaghetti.^";
+             else
+                print "^Water bubbles in the pot.^";
+          }
+          rtrue;
+       ],
+       before [;
+          SwitchOn:
+             if (pot notin self) "There is nothing on the stove to heat.";
+             if (pot.water == false && egg notin pot)
+                "The pot is empty — it would just scorch. Add water (or an egg) first.";
+             give self on;
+             self.cookcount = 0;
+             StartDaemon(self);
+             if (spaghetti in pot && spaghetti.cooked == false && spaghetti.burnt == false)
+                StartTimer(spaghetti, 8);
+             if (egg in pot && egg.fried == false)
+                StartTimer(egg, 2);
+             "You light the stove; a burner glows to life.";
+          SwitchOff:
+             give self ~on;
+             StopDaemon(self);
+             StopTimer(spaghetti);
+             "You turn the stove off.";
+       ],
+  has  static supporter switchable;
+
+Object tap "tap"
+  with name 'tap' 'faucet' 'sink' 'water',
+       description "A brass tap over a steel sink. It drips slowly.",
+  has  static;
+
+Object cupboard "cupboard"
+  with name 'cupboard' 'cabinet' 'cupboards',
+       description "A wooden cupboard above the counter.",
+  has  static container openable;
+
+Object pot "pot"
+  with name 'pot' 'pan' 'saucepan',
+       description [;
+          print "A dented steel pot.";
+          if (self.water) print " It holds water";
+          else print " It is empty";
+          if (self.salted) print " (salted)";
+          print ".";
+          if (self.dirty) print " It is crusted with dried-on food.";
+          if (spaghetti in self) {
+             if (spaghetti.burnt) print " A charred clump of ruined spaghetti is stuck inside.";
+             else if (spaghetti.cooked) print " Cooked spaghetti sits in it.";
+             else print " Dry spaghetti sits in it.";
+          }
+          new_line; rtrue;
+       ],
+       water false,
+       salted false,
+       dirty false,
+       ! "fill pot" / "put salt in pot" route here; other inserts are normal.
+       before [;
+          Fill:
+             if (tap notin location) "There is no water source here.";
+             if (self.water) "The pot is already full.";
+             self.water = true;
+             "You fill the pot with water at the tap.";
+          Rub:                          ! "wash pot" / "clean pot" at the sink
+             if (tap notin location) "You need a sink to wash up.";
+             if (self.dirty == false) "The pot is already clean.";
+             self.dirty = false;
+             "You scrub the pot clean under the tap.";
+          Receive:
+             if (noun == salt) {
+                self.salted = true;
+                remove salt;
+                "You stir the salt into the pot.";
+             }
+             if (noun == butter) {
+                if (spaghetti notin self || spaghetti.cooked == false)
+                   "Better to butter the pasta once it is cooked.";
+                spaghetti.buttered = true;
+                remove butter;
+                "You stir a knob of butter through the cooked spaghetti.";
+             }
+             rfalse;
+       ],
+  has  container open;
+
+Object spaghetti "spaghetti"
+  with name 'spaghetti' 'pasta' 'noodles' 'bundle',
+       description [;
+          if (self.burnt) "A charred, blackened clump. Ruined.";
+          if (self.cooked) "A nest of soft, steaming cooked spaghetti.";
+          "A brittle bundle of dry spaghetti.";
+       ],
+       cooked false,
+       burnt false,
+       buttered false,
+       time_left 0,
+       ! Fires 8 turns after the stove is lit (set by StartTimer in stove).
+       time_out [;
+          if (self notin pot || pot notin stove || stove hasnt on || pot.water == false)
+             "^The heat was interrupted; the spaghetti never finished cooking.^";
+          self.cooked = true;
+          if (pot.salted)
+             "^The water boils hard and the spaghetti softens through — perfectly seasoned and cooked.^";
+          "^The spaghetti softens and cooks through, though it could use a pinch of salt.^";
+       ],
+       before [;
+          Eat:
+             if (self.burnt) "Charred to ash. Inedible.";
+             if (self.cooked == false) "You crunch a few raw, brittle strands. Unpleasant — best cooked first.";
+             pot.dirty = true;          ! eating leaves a dirty pot to wash up
+             if (self.buttered) { remove self; "You eat the rich, buttery spaghetti. Wonderful."; }
+             if (pot.salted) { remove self; "You eat the warm, well-salted spaghetti. Delicious."; }
+             remove self;
+             "You eat the spaghetti. Edible, if a little bland.";
+       ],
+  has  edible;
+
+Object salt "tin of salt"
+  with name 'salt' 'tin' 'shaker' 'seasoning',
+       description "A little tin of table salt.",
+  has  ;
+
+! ---- Bathroom: laundry (wash -> dry -> wear) -------------------------------
+
+Object washer "washing machine"
+  with name 'washer' 'washing' 'machine' 'wash' 'drum',
+       description [;
+          print "A front-loading washing machine.";
+          if (self has on) {
+             if (self.running) print " It rumbles through its cycle, door locked.";
+             else print " It hums, cycle finished.";
+          }
+          if (laundry in self) {
+             if (laundry.clean && laundry.wet) print " Clean, wet laundry sits in the drum.";
+             else if (laundry.clean == false)  print " Dirty laundry waits in the drum.";
+          }
+          new_line; rtrue;
+       ],
+       running false,
+       soaped false,
+       daemon [;
+          if (self hasnt on) rfalse;
+          if (self.running == false) rfalse;
+          if (self in location) "^The washing machine sloshes and rumbles.^";
+          rtrue;
+       ],
+       before [;
+          Receive:
+             if (noun == detergent) {
+                self.soaped = true;
+                remove detergent;
+                "You tip the detergent into the machine.";
+             }
+             rfalse;                       ! laundry and anything else: normal
+          SwitchOn:
+             if (laundry notin self) "There is nothing in the machine to wash.";
+             give self on;
+             if (laundry.clean == false || laundry.wet == false) {
+                self.running = true;
+                StartTimer(laundry, 6);
+             }
+             StartDaemon(self);
+             "The machine clunks and begins to fill with water.";
+          SwitchOff:
+             give self ~on;
+             self.running = false;
+             StopDaemon(self);
+             StopTimer(laundry);
+             "You stop the machine.";
+       ],
+  has  static container open switchable;
+
+Object laundry "pile of laundry"
+  with name 'laundry' 'clothes' 'clothing' 'washing' 'pile' 'garments',
+       description [;
+          if (self.clean && self.wet) "A heap of clean but sopping-wet clothes.";
+          if (self.clean) "A pile of clean, dry clothes, ready to wear.";
+          "A pile of grubby, dirty clothes.";
+       ],
+       clean false,
+       wet false,
+       time_left 0,
+       ! Wash cycle finishes (set running by the washer's StartTimer).
+       time_out [;
+          if (self notin washer || washer hasnt on) "";   ! interrupted; stays as-is
+          self.clean = true;
+          self.wet = true;
+          washer.running = false;
+          if (washer.soaped)
+             "^The cycle ends. The laundry is fresh, clean, and dripping wet.^";
+          "^The cycle ends. The laundry is washed but a bit grey — no detergent — and dripping wet.^";
+       ],
+       before [;
+          Take:
+             if (washer.running && self in washer)
+                "The door is locked while the cycle runs.";
+             rfalse;
+          Wear:
+             if (self.clean == false) "You're not putting on dirty clothes.";
+             if (self.wet) "They're sopping wet. Dry them first.";
+             if (mucky) {
+                self.clean = false;
+                "You tug the clean clothes on with filthy hands — now they are grubby again. Wash up first!";
+             }
+             rfalse;                       ! clean, dry, clean hands: library wears them
+       ],
+  has  clothing;
+
+Object detergent "box of detergent"
+  with name 'detergent' 'box' 'powder' 'soap',
+       description "A box of laundry detergent.",
+  has  ;
+
+Object radiator "radiator"
+  with name 'radiator' 'rad' 'heater' 'rail',
+       description [;
+          print "A warm towel radiator.";
+          if (laundry in self) {
+             if (laundry.wet) print " Wet laundry is draped over it, steaming.";
+             else print " Dry laundry is draped over it.";
+          }
+          new_line; rtrue;
+       ],
+       drycount 0,
+       ! Dries wet laundry left on it over a few turns.
+       daemon [;
+          if (laundry notin self) { StopDaemon(self); rfalse; }
+          if (laundry.wet == false) { StopDaemon(self); rfalse; }
+          self.drycount = self.drycount + 1;
+          if (self.drycount >= 4) {
+             laundry.wet = false;
+             StopDaemon(self);
+             if (self in location) "^The laundry on the radiator is finally warm and dry.^";
+             rtrue;
+          }
+          if (self in location) "^The laundry steams gently on the warm radiator.^";
+          rtrue;
+       ],
+       before [;
+          Receive:
+             if (noun == laundry) {
+                self.drycount = 0;
+                if (laundry.wet) StartDaemon(self);
+             }
+             rfalse;
+       ],
+  has  static supporter;
+
+! ---- Living Room: television + stereo (rich) -------------------------------
+
+Object tv "television"
+  with name 'tv' 'television' 'telly' 'set' 'screen',
+       channel 0,
+       program [;                          ! prints the current show
+          switch (self.channel) {
+             0: print "the evening news";
+             1: print "a black-and-white film";
+             2: print "fuzzy static";
+          }
+       ],
+       description [;
+          print "A boxy television.";
+          if (self has on) { print " It shows "; self.program(); print "."; }
+          else print " It is off.";
+          new_line; rtrue;
+       ],
+       daemon [;
+          if (self hasnt on) rfalse;
+          if (self notin location) rfalse;
+          print "^The TV murmurs: "; self.program(); "...^";
+       ],
+       before [;
+          SwitchOn:
+             give self on;
+             StartDaemon(self);
+             print "The television flickers on, showing "; self.program(); print ".^"; rtrue;
+          SwitchOff:
+             give self ~on;
+             StopDaemon(self);
+             "The television clicks off.";
+       ],
+  has  static switchable;
+
+Object stereo "stereo"
+  with name 'stereo' 'hifi' 'hi-fi' 'radio' 'speakers',
+       track 0,
+       trackname [;                        ! prints the current track
+          switch (self.track) {
+             0: print "nothing";
+             1: print "smooth jazz";
+             2: print "loud rock";
+             3: print "a classical sonata";
+          }
+       ],
+       description [;
+          print "A sleek stereo.";
+          if (self has on) { print " It plays "; self.trackname(); print "."; }
+          else print " It is silent.";
+          new_line; rtrue;
+       ],
+       daemon [;
+          if (self hasnt on) rfalse;
+          if (self notin location) rfalse;
+          print "^The stereo plays "; self.trackname(); ".^";
+       ],
+       before [;
+          SwitchOn:
+             give self on;
+             if (self.track == 0) self.track = 1;
+             StartDaemon(self);
+             print "The stereo hums to life, playing "; self.trackname(); print ".^"; rtrue;
+          SwitchOff:
+             give self ~on;
+             StopDaemon(self);
+             "The stereo falls silent.";
+       ],
+  has  static switchable;
+
+! ---- Kitchen: fridge + ingredients -----------------------------------------
+
+Object fridge "refrigerator"
+  with name 'fridge' 'refrigerator' 'freezer' 'icebox',
+       description "A humming refrigerator, cold air seeping from the seal.",
+  has  static container openable;
+
+Object egg "egg"
+  with name 'egg' 'yolk',
+       description [;
+          if (self.fried) "A neatly fried egg, golden at the edges.";
+          "A cold, raw white egg.";
+       ],
+       fried false,
+       time_left 0,
+       ! Fries in 2 turns on the lit stove (StartTimer set in stove SwitchOn).
+       time_out [;
+          if (self notin pot || pot notin stove || stove hasnt on)
+             "^The egg never finished frying — the heat was interrupted.^";
+          self.fried = true;
+          pot.dirty = true;
+          "^The egg sizzles and sets into a golden fried egg.^";
+       ],
+       before [;
+          Eat:
+             if (self.fried) { remove self; "You eat the fried egg. Tasty."; }
+             "Raw egg, straight from the shell? Best fry it first.";
+       ],
+  has  edible;
+
+Object butter "pat of butter"
+  with name 'butter' 'pat', description "A foil-wrapped pat of butter.",
+  has  edible;
+
+Object milk "carton of milk"
+  with name 'milk' 'carton', description "A half-full carton of milk.",
+  has  ;
+
+! ---- Bedroom: wardrobe -----------------------------------------------------
+
+Object wardrobe "wardrobe"
+  with name 'wardrobe' 'armoire' 'cupboard',
+       description "A tall oak wardrobe.",
+  has  static container openable;
+
+Object coat "winter coat"
+  with name 'coat' 'winter' 'jacket', description "A heavy winter coat.",
+  has  clothing;
+
+Object slippers "slippers"
+  with name 'slippers' 'slipper', description "A pair of soft slippers.",
+  has  clothing pluralname;
+
+! ---- Bathroom: shower ------------------------------------------------------
+
+Object shower "shower"
+  with name 'shower' 'showerhead' 'tub' 'bath',
+       description [;
+          print "A shower over a small tub.";
+          if (self has on) print " Hot water is running.";
+          new_line; rtrue;
+       ],
+       daemon [;
+          if (self hasnt on) rfalse;
+          if (self notin location) rfalse;
+          "^Hot water patters down from the shower.^";
+       ],
+       before [;
+          SwitchOn: give self on;  StartDaemon(self); "You turn the shower on; water hisses out.";
+          SwitchOff: give self ~on; StopDaemon(self);  "You turn the shower off.";
+       ],
+  has  static switchable;
+
+Object duck "rubber duck"
+  with name 'duck' 'rubber', description "A cheerful yellow rubber duck.",
+  has  ;
+
+! ---- Living Room: houseplant (a way to get your hands dirty) ----------------
+
+Object houseplant "houseplant"
+  with name 'houseplant' 'plant' 'soil' 'dirt' 'earth' 'leaves',
+       description "A leafy houseplant in a clay pot of dark, crumbly soil.",
+       before [;
+          Dig:
+             mucky = true;
+             "You sink your fingers into the soil, getting your hands filthy.";
+       ],
+  has  static;
+
+! ---- Kitchen: drip coffee machine ------------------------------------------
+
+Object coffeemaker "coffee machine"
+  with name 'coffee' 'machine' 'maker' 'coffeemaker' 'brewer' 'drip',
+       description [;
+          print "A drip coffee machine.";
+          if (self has on) print " It gurgles and drips, brewing.";
+          new_line; rtrue;
+       ],
+       time_left 0,
+       time_out [;                         ! brew finishes
+          give self ~on;
+          StopDaemon(self);
+          mug.coffee = true;
+          "^The coffee machine beeps — a fresh mug of coffee is ready.^";
+       ],
+       daemon [;
+          if (self hasnt on) rfalse;
+          if (self notin location) rfalse;
+          "^The coffee machine drips and gurgles.^";
+       ],
+       ! "drink coffee" can match the machine (it shares the word 'coffee' with
+       ! the mug); redirect it to the brewed mug so the intent still works.
+       before [;
+          Drink:
+             if (mug.coffee) {
+                mug.coffee = false;
+                mug.dirty = true;
+                rested = true;
+                "You drink the hot, bitter coffee. You feel awake and alert.";
+             }
+             "There is no coffee to drink yet — brew a mug first.";
+       ],
+  has  static;
+
+! ---- Bedroom: bed ----------------------------------------------------------
+
+Object bed "bed"
+  with name 'bed' 'mattress' 'covers', description "A neatly made double bed.",
+  has  static supporter enterable;
+
+! ---- The cat, Mochi (an in-world companion that follows you) ----------------
+
+Object cat "Mochi"
+  with name 'mochi' 'cat' 'kitten' 'animal' 'grey',
+       description [;
+          print "Mochi, a small grey cat with bright green eyes.";
+          if (self.fed) print " She looks contentedly full.";
+          new_line; rtrue;
+       ],
+       fed false,
+       ! Follows the player around the flat — but never out the front door.
+       daemon [;
+          if (location == Landing or Street or Shop) rfalse;
+          if (self in location) {
+             if (random(3) == 1) "^Mochi winds around your ankles, purring.^";
+             rfalse;
+          }
+          move self to location;
+          "^Mochi pads in after you and settles nearby.^";
+       ],
+       life [;
+          Give:
+             if (noun == milk) {
+                remove milk;
+                self.fed = true;
+                "Mochi laps up the milk eagerly, then licks her whiskers clean.";
+             }
+             "Mochi sniffs it, unimpressed, and looks away.";
+          Order, Ask, Answer, Tell:
+             "Mochi blinks at you slowly, which is to say: no.";
+       ],
+  has  animate proper;
+
+! ---- Front door + outside (landing, street, corner shop) -------------------
+
+Object frontdoor "front door"
+  with name 'front' 'door',
+       description "Your flat's front door, painted a chipped blue.",
+       door_to [;
+          if (self in Hallway || location == Hallway) return Landing;
+          return Hallway;
+       ],
+       door_dir [;
+          if (self in Hallway || location == Hallway) return out_to;
+          return in_to;
+       ],
+       found_in Hallway Landing,
+       with_key doorkey,
+  has  static door openable lockable locked;
+
+Object doorkey "brass key"
+  with name 'brass' 'key' 'doorkey',
+       description "A small brass door key.",
+  has  ;
+
+Object mailbox "mailbox"
+  with name 'mailbox' 'postbox' 'box',
+       description "A row of tenant mailboxes; yours hangs slightly ajar.",
+  has  static container openable;
+
+Object letter "letter"
+  with name 'letter' 'envelope' 'post',
+       description "A handwritten letter: ~Welcome to the building! — the neighbours.~",
+  has  ;
+
+Object shopkeeper "shopkeeper"
+  with name 'shopkeeper' 'keeper' 'clerk' 'owner' 'grocer',
+       description "A genial shopkeeper behind the counter.",
+       life [;
+          Ask, Tell, Answer:
+             "~Lovely weather,~ the shopkeeper says. ~Mind the step on your way out.~";
+          Order:
+             "The shopkeeper just smiles and shrugs.";
+       ],
+  has  animate;
+
+Object newspaper "newspaper"
+  with name 'newspaper' 'paper' 'news',
+       description "Today's local paper. The headline is about the weather.",
+  has  ;
+
+Object coin "coin"
+  with name 'coin' 'penny' 'change',
+       description "A stray coin, dropped on the pavement.",
+  has  ;
+
 Include "Grammar";
+
+! ---- Custom verbs ----------------------------------------------------------
+! 'fill' is a standard library verb (action Fill, handled in pot.before above);
+! we only Extend it to accept the "fill pot with water" phrasing.
+
+Extend 'fill'
+   * noun 'with' 'water'/'tap' -> Fill;
+
+[ SaltSub;
+   if (salt notin player) "You aren't holding any salt.";
+   if (pot notin location && pot notin player && parent(pot) ~= stove)
+       "There is no pot here to season.";
+   pot.salted = true;
+   remove salt;
+   "You season the pot with salt.";
+];
+
+Verb 'salt' 'season'
+   *                          -> Salt
+   * noun                     -> Salt;
+
+! ---- Television: change channel --------------------------------------------
+
+[ ChannelSub;
+   if (tv notin location) "There is no television here.";
+   if (tv hasnt on) "The television is off.";
+   tv.channel = (tv.channel + 1) % 3;
+   print "You change the channel. Now showing "; tv.program(); print ".^";
+   rtrue;
+];
+
+Verb 'channel' 'flip' 'zap'
+   *                          -> Channel
+   * 'channel'                -> Channel;
+
+Verb 'change'
+   * 'channel'                -> Channel;
+
+! ---- Stereo: select music --------------------------------------------------
+
+Verb 'play'
+   * 'jazz'                   -> PlayJazz
+   * 'rock'                   -> PlayRock
+   * 'classical'/'classic'    -> PlayClassical;
+
+[ PlayTune t;       ! shared: t = track 1/2/3
+   if (stereo notin location) "There is no stereo here.";
+   give stereo on; stereo.track = t; StartDaemon(stereo);
+   print "You put on "; stereo.trackname(); print ".^"; rtrue;
+];
+[ PlayJazzSub;      PlayTune(1); ];
+[ PlayRockSub;      PlayTune(2); ];
+[ PlayClassicalSub; PlayTune(3); ];
+
+! ---- Shower: wash yourself -------------------------------------------------
+
+[ ShowerSub;
+   if (shower notin location) "There is no shower here.";
+   if (shower hasnt on) "Turn the shower on first.";
+   if (mucky) { mucky = false; "You scrub the dirt from your hands under the hot water. Clean and refreshed!"; }
+   "You step under the hot water. Refreshed!";
+];
+
+Verb 'shower' 'bathe'
+   *                          -> Shower
+   * noun                     -> Shower;
+
+! ---- Coffee machine: brew --------------------------------------------------
+
+[ BrewSub;
+   if (coffeemaker notin location) "There is no coffee machine here.";
+   if (mug notin location && mug notin player) "You need the mug to catch the coffee.";
+   if (mug.coffee) "The mug is already full of coffee.";
+   if (coffeemaker has on) "It is already brewing.";
+   give coffeemaker on;
+   StartTimer(coffeemaker, 2);
+   StartDaemon(coffeemaker);
+   "You start the coffee machine. It begins to gurgle.";
+];
+
+Verb 'brew' 'make'
+   *                          -> Brew
+   * 'coffee'                 -> Brew
+   * noun                     -> Brew;
+
+! ---- Bed: sleep ------------------------------------------------------------
+
+[ SnoozeSub;
+   if (bed notin location) "There is no bed here — find one first.";
+   rested = true;
+   "You lie down and drift off... You wake some time later, rested.";
+];
+
+Verb 'snooze'
+   *                          -> Snooze
+   * noun                     -> Snooze;
+
+Extend 'sleep' replace
+   *                          -> Snooze
+   * noun                     -> Snooze;
+
+! ---- Check your own condition ----------------------------------------------
+
+[ StatusSub;
+   if (rested) print "You feel rested and alert";
+   else        print "You feel a little weary";
+   if (mucky) print ", and your hands are filthy";
+   print ".^";
+   rtrue;
+];
+
+Verb 'condition' 'status'
+   *                          -> Status;
+
+! ---- Pet the cat -----------------------------------------------------------
+
+[ PetSub;
+   if (noun ~= cat) "That doesn't want petting.";
+   if (cat notin location) "Mochi isn't here.";
+   "You stroke Mochi; she arches into your hand and purrs.";
+];
+
+Verb 'pet' 'stroke' 'fuss'
+   * noun                     -> Pet;
+
+! ---- Wash up dirty dishes -------------------------------------------------
+! 'clean'/'scrub' already map to the Rub action (handled in pot/mug.before);
+! add 'wash' as a friendlier synonym.
+
+Verb 'wash'
+   * noun                     -> Rub;

@@ -5,7 +5,27 @@ integration-test story. They are *not* games — just maps that exercise movemen
 room + portable light, a switchable lamp, and takeable objects.
 
 - `apartment.inf` / `apartment.z5` — a flat: Hallway hub, Kitchen, Living Room, Bedroom,
-  dark Storage Closet; flashlight, floor lamp, mug.
+  dark Storage Closet; flashlight, floor lamp, mug. The Kitchen has a working cooking
+  sim: open the cupboard, take the pot + spaghetti, `fill pot`, `put spaghetti in pot`,
+  `put pot on stove`, `turn on stove`, then wait 8 turns for cooked pasta. `salt` the pot
+  for a seasoned result; leave it on the heat too long (~4 more turns) and it boils dry and
+  burns. Demonstrates Inform 6 timers (`StartTimer`/`time_out`) + a per-turn daemon.
+  The Bathroom (ensuite, east of the Bedroom) has a laundry sim: load the dirty laundry +
+  `detergent` into the washing machine, `turn on washer` (the door locks mid-cycle), wait
+  out the wash, then dry the wet clothes on the radiator and `wear` them. The Living Room
+  has a working `tv` (`change channel` to cycle programmes) and a `stereo` (`play jazz` /
+  `play rock` / `play classical`), each with ambient per-turn output while on. Extras: a
+  Kitchen `fridge` with ingredients (stir the `butter` through cooked spaghetti for a
+  richer eat), a Bedroom `wardrobe` with a coat and slippers to `wear`, and a Bathroom
+  `shower` you must turn on before you can `bathe`. A small needs loop ties it together:
+  `dig` the Living Room houseplant to get your hands filthy (`status` to check), which the
+  shower washes off — and pulling clean laundry on with dirty hands re-soils it. The
+  Kitchen `coffee machine` brews into the mug (`brew coffee`, then `drink coffee`) and the
+  Bedroom `bed` lets you `sleep`; both leave you `rested`. **Mochi** the cat follows you
+  around the flat (`pet` her, `give milk to cat`) but won't go outside. A lockable **front
+  door** (take the key, `unlock door with key`, then `out`) leads to a Landing with a
+  mailbox letter, a Street, and a Corner Shop. Deeper cooking: `fry` an egg in the pot on
+  the stove, and `wash` the dirty pot/mug at the tap after eating.
 - `garden.inf` / `garden.z5` — outdoors: Porch hub, Lawn, Greenhouse, Pond, dark Toolshed;
   lantern, fountain, trowel.
 
