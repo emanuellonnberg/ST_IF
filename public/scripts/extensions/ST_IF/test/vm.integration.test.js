@@ -348,3 +348,49 @@ test('shower: the shower must be running before you can wash', async () => {
     vm.step('turn on shower');
     assert.match(vm.step('shower'), /refreshed/i);
 });
+
+// --- Mud / coffee / sleep loops --------------------------------------------
+test('mud: digging the houseplant dirties you; the shower cleans it', async () => {
+    const vm = new IFVM();
+    await vm.load(apt);
+    vm.step('east');                           // Living Room
+    assert.match(vm.step('dig plant'), /filthy/i);
+    assert.match(vm.step('status'), /filthy/i);
+    vm.step('west'); vm.step('south'); vm.step('east');   // Bathroom
+    vm.step('turn on shower');
+    assert.match(vm.step('bathe'), /clean/i);
+    assert.doesNotMatch(vm.step('status'), /filthy/i);
+});
+
+test('mud: dressing with filthy hands re-soils the clean laundry', async () => {
+    const vm = await washerLoaded();
+    vm.step('turn on washer');
+    waitUntil(vm, /cycle ends/i);
+    vm.step('take laundry');
+    vm.step('put laundry on radiator');
+    waitUntil(vm, /warm and dry/i);
+    vm.step('take laundry');
+    vm.step('west'); vm.step('north'); vm.step('east');   // Living Room
+    vm.step('dig plant');
+    assert.match(vm.step('wear laundry'), /grubby again/i);
+});
+
+test('coffee: brew a mug and drink it to feel rested', async () => {
+    const vm = new IFVM();
+    await vm.load(apt);
+    vm.step('north');                          // Kitchen
+    vm.step('take mug');
+    vm.step('brew coffee');
+    assert.match(waitUntil(vm, /ready/i), /ready/i);
+    assert.match(vm.step('drink coffee'), /awake|alert/i);
+    assert.match(vm.step('status'), /rested/i);
+});
+
+test('sleep: napping in the bed leaves you rested; no bed elsewhere', async () => {
+    const vm = new IFVM();
+    await vm.load(apt);
+    assert.match(vm.step('sleep'), /no bed/i);            // Hallway
+    vm.step('south');                          // Bedroom
+    assert.match(vm.step('sleep'), /rested/i);
+    assert.match(vm.step('status'), /rested/i);
+});

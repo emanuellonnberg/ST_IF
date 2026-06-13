@@ -8,6 +8,9 @@ Constant Headline "^A small ST_IF sandbox apartment.^";
 Include "Parser";
 Include "VerbLib";
 
+Global mucky = 0;     ! player's hands are dirty (from the plant soil)
+Global rested = 0;    ! player has had coffee or a nap
+
 [ Initialise;
    location = Hallway;
    move mug to Kitchen;
@@ -34,6 +37,9 @@ Include "VerbLib";
    move slippers to wardrobe;
    move shower to Bathroom;
    move duck to Bathroom;
+   move coffeemaker to Kitchen;
+   move houseplant to LivingRoom;
+   move bed to Bedroom;
    "^You are home. Wander around and try things.^";
 ];
 
@@ -67,7 +73,20 @@ Object Closet "Storage Closet"
        e_to Hallway;
 
 Object mug "ceramic mug"
-  with name 'mug' 'cup' 'ceramic', description "A plain ceramic mug.",
+  with name 'mug' 'cup' 'ceramic' 'coffee',
+       description [;
+          print "A plain ceramic mug.";
+          if (self.coffee) print " It is full of hot, dark coffee.";
+          new_line; rtrue;
+       ],
+       coffee false,
+       before [;
+          Drink:
+             if (self.coffee == false) "The mug is empty.";
+             self.coffee = false;
+             rested = true;
+             "You drink the hot, bitter coffee. You feel awake and alert.";
+       ],
   has ;
 
 Object flashlight "flashlight"
@@ -310,7 +329,11 @@ Object laundry "pile of laundry"
           Wear:
              if (self.clean == false) "You're not putting on dirty clothes.";
              if (self.wet) "They're sopping wet. Dry them first.";
-             rfalse;                       ! clean & dry: let the library wear them
+             if (mucky) {
+                self.clean = false;
+                "You tug the clean clothes on with filthy hands — now they are grubby again. Wash up first!";
+             }
+             rfalse;                       ! clean, dry, clean hands: library wears them
        ],
   has  clothing;
 
@@ -482,6 +505,58 @@ Object duck "rubber duck"
   with name 'duck' 'rubber', description "A cheerful yellow rubber duck.",
   has  ;
 
+! ---- Living Room: houseplant (a way to get your hands dirty) ----------------
+
+Object houseplant "houseplant"
+  with name 'houseplant' 'plant' 'soil' 'dirt' 'earth' 'leaves',
+       description "A leafy houseplant in a clay pot of dark, crumbly soil.",
+       before [;
+          Dig:
+             mucky = true;
+             "You sink your fingers into the soil, getting your hands filthy.";
+       ],
+  has  static;
+
+! ---- Kitchen: drip coffee machine ------------------------------------------
+
+Object coffeemaker "coffee machine"
+  with name 'coffee' 'machine' 'maker' 'coffeemaker' 'brewer' 'drip',
+       description [;
+          print "A drip coffee machine.";
+          if (self has on) print " It gurgles and drips, brewing.";
+          new_line; rtrue;
+       ],
+       time_left 0,
+       time_out [;                         ! brew finishes
+          give self ~on;
+          StopDaemon(self);
+          mug.coffee = true;
+          "^The coffee machine beeps — a fresh mug of coffee is ready.^";
+       ],
+       daemon [;
+          if (self hasnt on) rfalse;
+          if (self notin location) rfalse;
+          "^The coffee machine drips and gurgles.^";
+       ],
+       ! "drink coffee" can match the machine (it shares the word 'coffee' with
+       ! the mug); redirect it to the brewed mug so the intent still works.
+       before [;
+          Drink:
+             if (mug.coffee) {
+                mug.coffee = false;
+                rested = true;
+                "You drink the hot, bitter coffee. You feel awake and alert.";
+             }
+             "There is no coffee to drink yet — brew a mug first.";
+       ],
+  has  static;
+
+! ---- Bedroom: bed ----------------------------------------------------------
+
+Object bed "bed"
+  with name 'bed' 'mattress' 'covers', description "A neatly made double bed.",
+  has  static supporter enterable;
+
 Include "Grammar";
 
 ! ---- Custom verbs ----------------------------------------------------------
@@ -542,9 +617,57 @@ Verb 'play'
 [ ShowerSub;
    if (shower notin location) "There is no shower here.";
    if (shower hasnt on) "Turn the shower on first.";
-   "You step under the hot water and scrub clean. Refreshed!";
+   if (mucky) { mucky = false; "You scrub the dirt from your hands under the hot water. Clean and refreshed!"; }
+   "You step under the hot water. Refreshed!";
 ];
 
 Verb 'shower' 'bathe'
    *                          -> Shower
    * noun                     -> Shower;
+
+! ---- Coffee machine: brew --------------------------------------------------
+
+[ BrewSub;
+   if (coffeemaker notin location) "There is no coffee machine here.";
+   if (mug notin location && mug notin player) "You need the mug to catch the coffee.";
+   if (mug.coffee) "The mug is already full of coffee.";
+   if (coffeemaker has on) "It is already brewing.";
+   give coffeemaker on;
+   StartTimer(coffeemaker, 2);
+   StartDaemon(coffeemaker);
+   "You start the coffee machine. It begins to gurgle.";
+];
+
+Verb 'brew' 'make'
+   *                          -> Brew
+   * 'coffee'                 -> Brew
+   * noun                     -> Brew;
+
+! ---- Bed: sleep ------------------------------------------------------------
+
+[ SnoozeSub;
+   if (bed notin location) "There is no bed here — find one first.";
+   rested = true;
+   "You lie down and drift off... You wake some time later, rested.";
+];
+
+Verb 'snooze'
+   *                          -> Snooze
+   * noun                     -> Snooze;
+
+Extend 'sleep' replace
+   *                          -> Snooze
+   * noun                     -> Snooze;
+
+! ---- Check your own condition ----------------------------------------------
+
+[ StatusSub;
+   if (rested) print "You feel rested and alert";
+   else        print "You feel a little weary";
+   if (mucky) print ", and your hands are filthy";
+   print ".^";
+   rtrue;
+];
+
+Verb 'condition' 'status'
+   *                          -> Status;

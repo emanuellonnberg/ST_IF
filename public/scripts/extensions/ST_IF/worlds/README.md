@@ -17,7 +17,11 @@ room + portable light, a switchable lamp, and takeable objects.
   `play rock` / `play classical`), each with ambient per-turn output while on. Extras: a
   Kitchen `fridge` with ingredients (stir the `butter` through cooked spaghetti for a
   richer eat), a Bedroom `wardrobe` with a coat and slippers to `wear`, and a Bathroom
-  `shower` you must turn on before you can `bathe`.
+  `shower` you must turn on before you can `bathe`. A small needs loop ties it together:
+  `dig` the Living Room houseplant to get your hands filthy (`status` to check), which the
+  shower washes off — and pulling clean laundry on with dirty hands re-soils it. The
+  Kitchen `coffee machine` brews into the mug (`brew coffee`, then `drink coffee`) and the
+  Bedroom `bed` lets you `sleep`; both leave you `rested`.
 - `garden.inf` / `garden.z5` — outdoors: Porch hub, Lawn, Greenhouse, Pond, dark Toolshed;
   lantern, fountain, trowel.
 
