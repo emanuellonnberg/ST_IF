@@ -235,6 +235,31 @@ export class IFVM {
         return out;
     }
 
+    /**
+     * Push engine world-edit meta-commands (xroom/xdesc/xobj/xodesc) into the VM
+     * in order. Each is a normal step that mutates the pool's dynamic memory.
+     * Never throws on a single bad command; returns the concatenated output.
+     */
+    applyWorldEdits(cmds) {
+        let out = '';
+        for (const c of cmds) {
+            try { out += this.step(c) + '\n'; } catch { out += `[edit failed: ${c}]\n`; }
+        }
+        return out;
+    }
+
+    /**
+     * True if the loaded story includes the expanse pool (understands `xroom`).
+     * Probed with zero net effect via save/restore. Plain stories reject the verb.
+     */
+    isExpandable() {
+        if (!this._loaded) return false;
+        const snap = this.save();
+        const out = this.step('xroom north probe');
+        this.restore(snap);
+        return /xroom ok|no-free-room/i.test(out);
+    }
+
     /** Serialize full VM state to a base64 string. */
     save() {
         if (!this._loaded) throw new Error('ST_IF: no story loaded');
