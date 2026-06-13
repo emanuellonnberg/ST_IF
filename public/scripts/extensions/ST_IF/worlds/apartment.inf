@@ -1,0 +1,62 @@
+! apartment.inf — ST_IF sandbox test world. Dedicated to the public domain (CC0).
+! A small flat to walk around in: a hub hallway, four rooms (one dark), a
+! portable flashlight, a switchable floor lamp, and takeable objects.
+Constant Story "APARTMENT";
+Constant Headline "^A small ST_IF sandbox apartment.^";
+Include "Parser";
+Include "VerbLib";
+
+[ Initialise;
+   location = Hallway;
+   move mug to Kitchen;
+   move flashlight to Hallway;
+   move lamp to LivingRoom;
+   "^You are home. Wander around and try things.^";
+];
+
+Object Hallway "Hallway"
+  with description "A narrow hallway. The living room is east, the kitchen north, the bedroom south, and a closet door is west.",
+       n_to Kitchen, e_to LivingRoom, s_to Bedroom, w_to Closet,
+  has light;
+
+Object Kitchen "Kitchen"
+  with description "A small kitchen with a worn table. The hallway is south.",
+       s_to Hallway,
+  has light;
+
+Object LivingRoom "Living Room"
+  with description "A cosy living room with a couch. The hallway is west.",
+       w_to Hallway,
+  has light;
+
+Object Bedroom "Bedroom"
+  with description "A quiet bedroom with a made bed. The hallway is north.",
+       n_to Hallway,
+  has light;
+
+Object Closet "Storage Closet"
+  with description "A cramped storage closet, shelves to the ceiling. The hallway is east.",
+       e_to Hallway;
+
+Object mug "ceramic mug"
+  with name 'mug' 'cup' 'ceramic', description "A plain ceramic mug.",
+  has ;
+
+Object flashlight "flashlight"
+  with name 'flashlight' 'torch' 'light',
+       description "A small flashlight.",
+       before [;
+         SwitchOn: give self light; "You switch the flashlight on.";
+         SwitchOff: give self ~light; "You switch the flashlight off.";
+       ],
+  has switchable;
+
+Object lamp "floor lamp"
+  with name 'lamp' 'floor', description "A tall floor lamp.",
+       before [;
+         SwitchOn: give self light; "The lamp glows warmly.";
+         SwitchOff: give self ~light; "The lamp goes dark.";
+       ],
+  has switchable static;
+
+Include "Grammar";

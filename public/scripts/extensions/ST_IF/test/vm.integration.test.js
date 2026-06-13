@@ -125,3 +125,21 @@ test('ensureVerbose repairs a brief-lineage snapshot after restore', zorkOpts, a
     assert.ok(back.trim().length > 90, 'full description after verbose repair');
     assert.match(back, /open field|white house/i);
 });
+
+const apt = new Uint8Array(readFileSync(new URL('../worlds/apartment.z5', import.meta.url)));
+
+test('apartment world: starts in the hallway and moves to named rooms', async () => {
+    const vm = new IFVM();
+    await vm.load(apt);
+    assert.equal(vm.getStatus().location, 'Hallway');
+    assert.match(vm.step('east'), /Living Room/);
+    assert.match(vm.step('west'), /Hallway/);
+    assert.match(vm.step('west'), /pitch dark/i, 'closet is dark without a light');
+});
+
+test('apartment world: inventory query reflects a taken object', async () => {
+    const vm = new IFVM();
+    await vm.load(apt);
+    vm.step('take flashlight');
+    assert.match(vm.query('inventory'), /flashlight/i);
+});
