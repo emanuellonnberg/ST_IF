@@ -10,6 +10,11 @@ room + portable light, a switchable lamp, and takeable objects.
   `put pot on stove`, `turn on stove`, then wait 8 turns for cooked pasta. `salt` the pot
   for a seasoned result; leave it on the heat too long (~4 more turns) and it boils dry and
   burns. Demonstrates Inform 6 timers (`StartTimer`/`time_out`) + a per-turn daemon.
+  The Bathroom (ensuite, east of the Bedroom) has a laundry sim: load the dirty laundry +
+  `detergent` into the washing machine, `turn on washer` (the door locks mid-cycle), wait
+  out the wash, then dry the wet clothes on the radiator and `wear` them. The Living Room
+  has a working `tv` (`change channel` to cycle programmes) and a `stereo` (`play jazz` /
+  `play rock` / `play classical`), each with ambient per-turn output while on.
 - `garden.inf` / `garden.z5` — outdoors: Porch hub, Lawn, Greenhouse, Pond, dark Toolshed;
   lantern, fountain, trowel.
 

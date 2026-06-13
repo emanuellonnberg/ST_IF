@@ -231,3 +231,84 @@ test('cooking: turning the stove off before 8 turns leaves the pasta uncooked', 
     vm.step('turn off stove');
     assert.match(vm.step('examine spaghetti'), /dry/i, 'interrupted heat never finishes the cook');
 });
+
+// --- Bathroom laundry (wash -> dry -> wear) and Living Room media -----------
+function waitUntil(vm, re, max = 14) {
+    for (let i = 0; i < max; i++) { const o = vm.step('wait'); if (re.test(o)) return o; }
+    return '';
+}
+
+// Enter the Bathroom and load the laundry (and detergent unless soap=false).
+async function washerLoaded({ soap = true } = {}) {
+    const vm = new IFVM();
+    await vm.load(apt);
+    vm.step('south'); vm.step('east');         // Hallway -> Bedroom -> Bathroom
+    vm.step('take laundry');
+    vm.step('put laundry in washer');
+    if (soap) { vm.step('take detergent'); vm.step('put detergent in washer'); }
+    return vm;
+}
+
+test('laundry: a full cycle leaves the clothes clean and wet', async () => {
+    const vm = await washerLoaded();
+    vm.step('turn on washer');
+    assert.match(waitUntil(vm, /cycle ends/i), /fresh, clean/i, 'detergent gives a fresh result');
+    assert.match(vm.step('examine laundry'), /clean.*wet/i);
+});
+
+test('laundry: the door is locked while the cycle runs', async () => {
+    const vm = await washerLoaded();
+    vm.step('turn on washer');
+    assert.match(vm.step('take laundry'), /locked/i);
+});
+
+test('laundry: without detergent the wash comes out grey', async () => {
+    const vm = await washerLoaded({ soap: false });
+    vm.step('turn on washer');
+    assert.match(waitUntil(vm, /cycle ends/i), /grey|no detergent/i);
+});
+
+test('laundry: running an empty machine is refused', async () => {
+    const vm = new IFVM();
+    await vm.load(apt);
+    vm.step('south'); vm.step('east');         // Bathroom, laundry left on the floor
+    assert.match(vm.step('turn on washer'), /nothing in the machine/i);
+});
+
+test('laundry: dry the wet wash on the radiator, then wear it', async () => {
+    const vm = await washerLoaded();
+    vm.step('turn on washer');
+    waitUntil(vm, /cycle ends/i);
+    vm.step('take laundry');
+    assert.match(vm.step('wear laundry'), /wet/i, 'cannot wear sopping clothes');
+    vm.step('put laundry on radiator');
+    assert.match(waitUntil(vm, /warm and dry/i), /warm and dry/i);
+    vm.step('take laundry');
+    assert.match(vm.step('wear laundry'), /put on/i);
+});
+
+test('media: the TV cycles through its channels', async () => {
+    const vm = new IFVM();
+    await vm.load(apt);
+    vm.step('east');                           // Living Room
+    assert.match(vm.step('turn on tv'), /evening news/i);
+    assert.match(vm.step('change channel'), /black-and-white film/i);
+    assert.match(vm.step('change channel'), /fuzzy static/i);
+    assert.match(vm.step('change channel'), /evening news/i, 'wraps back to the first channel');
+});
+
+test('media: changing channel on an off TV is refused', async () => {
+    const vm = new IFVM();
+    await vm.load(apt);
+    vm.step('east');
+    assert.match(vm.step('change channel'), /off/i);
+});
+
+test('media: the stereo plays a selected genre', async () => {
+    const vm = new IFVM();
+    await vm.load(apt);
+    vm.step('east');
+    assert.match(vm.step('play rock'), /loud rock/i);
+    assert.match(vm.step('examine stereo'), /loud rock/i);
+    assert.match(vm.step('play classical'), /classical sonata/i);
+});

@@ -19,6 +19,12 @@ Include "VerbLib";
    move pot to cupboard;
    move spaghetti to cupboard;
    move salt to cupboard;
+   move tv to LivingRoom;
+   move stereo to LivingRoom;
+   move washer to Bathroom;
+   move radiator to Bathroom;
+   move laundry to Bathroom;
+   move detergent to Bathroom;
    "^You are home. Wander around and try things.^";
 ];
 
@@ -33,13 +39,18 @@ Object Kitchen "Kitchen"
   has light;
 
 Object LivingRoom "Living Room"
-  with description "A cosy living room with a couch. The hallway is west.",
+  with description "A cosy living room with a couch, a television, and a stereo. The hallway is west.",
        w_to Hallway,
   has light;
 
 Object Bedroom "Bedroom"
-  with description "A quiet bedroom with a made bed. The hallway is north.",
-       n_to Hallway,
+  with description "A quiet bedroom with a made bed. The hallway is north; an ensuite bathroom is east.",
+       n_to Hallway, e_to Bathroom,
+  has light;
+
+Object Bathroom "Bathroom"
+  with description "A tiled bathroom with a washing machine and a warm radiator. The bedroom is west.",
+       w_to Bedroom,
   has light;
 
 Object Closet "Storage Closet"
@@ -193,6 +204,193 @@ Object salt "tin of salt"
        description "A little tin of table salt.",
   has  ;
 
+! ---- Bathroom: laundry (wash -> dry -> wear) -------------------------------
+
+Object washer "washing machine"
+  with name 'washer' 'washing' 'machine' 'wash' 'drum',
+       description [;
+          print "A front-loading washing machine.";
+          if (self has on) {
+             if (self.running) print " It rumbles through its cycle, door locked.";
+             else print " It hums, cycle finished.";
+          }
+          if (laundry in self) {
+             if (laundry.clean && laundry.wet) print " Clean, wet laundry sits in the drum.";
+             else if (laundry.clean == false)  print " Dirty laundry waits in the drum.";
+          }
+          new_line; rtrue;
+       ],
+       running false,
+       soaped false,
+       daemon [;
+          if (self hasnt on) rfalse;
+          if (self.running == false) rfalse;
+          "^The washing machine sloshes and rumbles.^";
+       ],
+       before [;
+          Receive:
+             if (noun == detergent) {
+                self.soaped = true;
+                remove detergent;
+                "You tip the detergent into the machine.";
+             }
+             rfalse;                       ! laundry and anything else: normal
+          SwitchOn:
+             if (laundry notin self) "There is nothing in the machine to wash.";
+             give self on;
+             if (laundry.clean == false || laundry.wet == false) {
+                self.running = true;
+                StartTimer(laundry, 6);
+             }
+             StartDaemon(self);
+             "The machine clunks and begins to fill with water.";
+          SwitchOff:
+             give self ~on;
+             self.running = false;
+             StopDaemon(self);
+             StopTimer(laundry);
+             "You stop the machine.";
+       ],
+  has  static container open switchable;
+
+Object laundry "pile of laundry"
+  with name 'laundry' 'clothes' 'clothing' 'washing' 'pile' 'garments',
+       description [;
+          if (self.clean && self.wet) "A heap of clean but sopping-wet clothes.";
+          if (self.clean) "A pile of clean, dry clothes, ready to wear.";
+          "A pile of grubby, dirty clothes.";
+       ],
+       clean false,
+       wet false,
+       time_left 0,
+       ! Wash cycle finishes (set running by the washer's StartTimer).
+       time_out [;
+          if (self notin washer || washer hasnt on) "";   ! interrupted; stays as-is
+          self.clean = true;
+          self.wet = true;
+          washer.running = false;
+          if (washer.soaped)
+             "^The cycle ends. The laundry is fresh, clean, and dripping wet.^";
+          "^The cycle ends. The laundry is washed but a bit grey — no detergent — and dripping wet.^";
+       ],
+       before [;
+          Take:
+             if (washer.running && self in washer)
+                "The door is locked while the cycle runs.";
+             rfalse;
+          Wear:
+             if (self.clean == false) "You're not putting on dirty clothes.";
+             if (self.wet) "They're sopping wet. Dry them first.";
+             rfalse;                       ! clean & dry: let the library wear them
+       ],
+  has  clothing;
+
+Object detergent "box of detergent"
+  with name 'detergent' 'box' 'powder' 'soap',
+       description "A box of laundry detergent.",
+  has  ;
+
+Object radiator "radiator"
+  with name 'radiator' 'rad' 'heater' 'rail',
+       description [;
+          print "A warm towel radiator.";
+          if (laundry in self) {
+             if (laundry.wet) print " Wet laundry is draped over it, steaming.";
+             else print " Dry laundry is draped over it.";
+          }
+          new_line; rtrue;
+       ],
+       drycount 0,
+       ! Dries wet laundry left on it over a few turns.
+       daemon [;
+          if (laundry notin self) { StopDaemon(self); rfalse; }
+          if (laundry.wet == false) { StopDaemon(self); rfalse; }
+          self.drycount = self.drycount + 1;
+          if (self.drycount >= 4) {
+             laundry.wet = false;
+             StopDaemon(self);
+             "^The laundry on the radiator is finally warm and dry.^";
+          }
+          "^The laundry steams gently on the warm radiator.^";
+       ],
+       before [;
+          Receive:
+             if (noun == laundry) {
+                self.drycount = 0;
+                if (laundry.wet) StartDaemon(self);
+             }
+             rfalse;
+       ],
+  has  static supporter;
+
+! ---- Living Room: television + stereo (rich) -------------------------------
+
+Object tv "television"
+  with name 'tv' 'television' 'telly' 'set' 'screen',
+       channel 0,
+       program [;                          ! prints the current show
+          switch (self.channel) {
+             0: print "the evening news";
+             1: print "a black-and-white film";
+             2: print "fuzzy static";
+          }
+       ],
+       description [;
+          print "A boxy television.";
+          if (self has on) { print " It shows "; self.program(); print "."; }
+          else print " It is off.";
+          new_line; rtrue;
+       ],
+       daemon [;
+          if (self hasnt on) rfalse;
+          print "^The TV murmurs: "; self.program(); "...^";
+       ],
+       before [;
+          SwitchOn:
+             give self on;
+             StartDaemon(self);
+             print "The television flickers on, showing "; self.program(); print ".^"; rtrue;
+          SwitchOff:
+             give self ~on;
+             StopDaemon(self);
+             "The television clicks off.";
+       ],
+  has  static switchable;
+
+Object stereo "stereo"
+  with name 'stereo' 'hifi' 'hi-fi' 'radio' 'speakers',
+       track 0,
+       trackname [;                        ! prints the current track
+          switch (self.track) {
+             0: print "nothing";
+             1: print "smooth jazz";
+             2: print "loud rock";
+             3: print "a classical sonata";
+          }
+       ],
+       description [;
+          print "A sleek stereo.";
+          if (self has on) { print " It plays "; self.trackname(); print "."; }
+          else print " It is silent.";
+          new_line; rtrue;
+       ],
+       daemon [;
+          if (self hasnt on) rfalse;
+          print "^The stereo plays "; self.trackname(); ".^";
+       ],
+       before [;
+          SwitchOn:
+             give self on;
+             if (self.track == 0) self.track = 1;
+             StartDaemon(self);
+             print "The stereo hums to life, playing "; self.trackname(); print ".^"; rtrue;
+          SwitchOff:
+             give self ~on;
+             StopDaemon(self);
+             "The stereo falls silent.";
+       ],
+  has  static switchable;
+
 Include "Grammar";
 
 ! ---- Custom verbs ----------------------------------------------------------
@@ -214,3 +412,33 @@ Extend 'fill'
 Verb 'salt' 'season'
    *                          -> Salt
    * noun                     -> Salt;
+
+! ---- Television: change channel --------------------------------------------
+
+[ ChannelSub;
+   if (tv hasnt on) "The television is off.";
+   tv.channel = (tv.channel + 1) % 3;
+   print "You change the channel. Now showing "; tv.program(); print ".^";
+   rtrue;
+];
+
+Verb 'channel' 'flip' 'zap'
+   *                          -> Channel
+   * 'channel'                -> Channel;
+
+Verb 'change'
+   * 'channel'                -> Channel;
+
+! ---- Stereo: select music --------------------------------------------------
+
+Verb 'play'
+   * 'jazz'                   -> PlayJazz
+   * 'rock'                   -> PlayRock
+   * 'classical'/'classic'    -> PlayClassical;
+
+[ PlayJazzSub;      give stereo on; stereo.track = 1; StartDaemon(stereo);
+                    print "You put on "; stereo.trackname(); print ".^"; rtrue; ];
+[ PlayRockSub;      give stereo on; stereo.track = 2; StartDaemon(stereo);
+                    print "You put on "; stereo.trackname(); print ".^"; rtrue; ];
+[ PlayClassicalSub; give stereo on; stereo.track = 3; StartDaemon(stereo);
+                    print "You put on "; stereo.trackname(); print ".^"; rtrue; ];
