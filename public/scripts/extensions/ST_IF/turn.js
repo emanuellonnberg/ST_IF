@@ -147,7 +147,7 @@ export async function runTurn(deps, chat, type) {
         // A companion move whose outcome is darkness or death is rolled back: she
         // is position-only and could never recover (can't pick up a light, can't
         // resurrect) — so she refuses the step instead, in character.
-        const DARK_OR_DEATH = /pitch black|grue|you have died|\*\*\*\*/i;
+        const DARK_OR_DEATH = /pitch (black|dark)|too dark to see|can't see a thing|grue|you have died|\*\*\*\*/i;
         const safeStep = (cmd) => {
             const snap = companionVM.save();
             const out = companionVM.step(cmd);

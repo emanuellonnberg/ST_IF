@@ -78,9 +78,16 @@ test('save/restore round-trips through base64 JSON and reproduces next-step outp
     assert.equal(afterEast2, afterEast1, 'restored VM reproduces identical next-step output');
 });
 
-const zork = new Uint8Array(readFileSync(new URL('./fixtures/zork1-r88-s840726.z3', import.meta.url)));
+// Zork I is a copyrighted Infocom game and is NOT committed to the repo. These
+// extra integration cases run only when a local copy is present; on a clean clone
+// they skip so the suite stays green without redistributing the game.
+let zork = null;
+try {
+    zork = new Uint8Array(readFileSync(new URL('./fixtures/zork1-r88-s840726.z3', import.meta.url)));
+} catch { /* fixture absent — zork tests skip */ }
+const zorkOpts = { skip: zork ? false : 'zork1 fixture not present (copyrighted; not committed)' };
 
-test('forces verbose so re-entering a visited room prints the full description', async () => {
+test('forces verbose so re-entering a visited room prints the full description', zorkOpts, async () => {
     const vm = new IFVM();
     await vm.load(zork);
     // The house perimeter loops back to West of House (already visited at start).
@@ -90,7 +97,7 @@ test('forces verbose so re-entering a visited room prints the full description',
     assert.ok(back.trim().length > 90, 'not the brief name-only form');
 });
 
-test('query runs a command with zero net game effect', async () => {
+test('query runs a command with zero net game effect', zorkOpts, async () => {
     const vm = new IFVM();
     await vm.load(zork);
     vm.step('open mailbox'); vm.step('take leaflet');
@@ -103,7 +110,7 @@ test('query runs a command with zero net game effect', async () => {
     assert.match(next, /West of House/i, 'VM still playable after a query');
 });
 
-test('ensureVerbose repairs a brief-lineage snapshot after restore', async () => {
+test('ensureVerbose repairs a brief-lineage snapshot after restore', zorkOpts, async () => {
     const a = new IFVM();
     await a.load(zork);
     a.step('brief');                      // simulate an old pre-verbose save lineage
@@ -117,4 +124,45 @@ test('ensureVerbose repairs a brief-lineage snapshot after restore', async () =>
     const back = b.step('west');
     assert.ok(back.trim().length > 90, 'full description after verbose repair');
     assert.match(back, /open field|white house/i);
+});
+
+const apt = new Uint8Array(readFileSync(new URL('../worlds/apartment.z5', import.meta.url)));
+
+test('apartment world: starts in the hallway and moves to named rooms', async () => {
+    const vm = new IFVM();
+    await vm.load(apt);
+    assert.equal(vm.getStatus().location, 'Hallway');
+    assert.match(vm.step('east'), /Living Room/);
+    assert.match(vm.step('west'), /Hallway/);
+    assert.match(vm.step('west'), /pitch dark/i, 'closet is dark without a light');
+});
+
+test('apartment world: inventory query reflects a taken object', async () => {
+    const vm = new IFVM();
+    await vm.load(apt);
+    vm.step('take flashlight');
+    assert.match(vm.query('inventory'), /flashlight/i);
+});
+
+test('apartment: forces verbose so a revisited room shows the full description', async () => {
+    const vm = new IFVM();
+    await vm.load(apt);
+    vm.step('east');                 // Living Room
+    const back = vm.step('west');    // re-enter Hallway (already visited)
+    assert.match(back, /narrow hallway/i, 'full description on return');
+    assert.ok(back.trim().length > 40, 'not a brief name-only line');
+});
+
+test('apartment: ensureVerbose repairs a brief-lineage snapshot', async () => {
+    const a = new IFVM();
+    await a.load(apt);
+    a.step('brief');
+    const briefSnap = a.save();
+    const b = new IFVM();
+    await b.load(apt);
+    b.restore(briefSnap);
+    b.ensureVerbose();
+    b.step('east');
+    const back = b.step('west');
+    assert.match(back, /narrow hallway/i);
 });
