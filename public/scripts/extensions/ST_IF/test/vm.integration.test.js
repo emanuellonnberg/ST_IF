@@ -414,3 +414,34 @@ test('cat: petting and feeding Mochi milk', async () => {
     assert.match(vm.step('give milk to cat'), /laps up the milk/i);
     assert.match(vm.step('examine mochi'), /full/i);
 });
+
+// --- Front door + outside (landing, street, shop) --------------------------
+test('front door: locked until unlocked with the key, then leads outside', async () => {
+    const vm = new IFVM();
+    await vm.load(apt);
+    assert.match(vm.step('out'), /in the way|locked/i);   // blocked
+    vm.step('take key');
+    vm.step('unlock door with key');
+    vm.step('open door');
+    assert.match(vm.step('out'), /Landing/);
+});
+
+test('outside: read the mailbox letter, reach the street and the corner shop', async () => {
+    const vm = new IFVM();
+    await vm.load(apt);
+    vm.step('take key'); vm.step('unlock door with key'); vm.step('open door'); vm.step('out');
+    vm.step('open mailbox');
+    assert.match(vm.step('read letter'), /welcome/i);
+    assert.match(vm.step('down'), /Street/);
+    assert.match(vm.step('east'), /Corner Shop/);
+    assert.match(vm.step('ask shopkeeper about weather'), /weather|step/i);
+});
+
+test('cat: Mochi will not follow you out the front door', async () => {
+    const vm = new IFVM();
+    await vm.load(apt);
+    vm.step('east'); vm.step('west');          // make sure she is trailing
+    vm.step('take key'); vm.step('unlock door with key'); vm.step('open door');
+    vm.step('out');                            // Landing
+    assert.doesNotMatch(vm.step('look'), /Mochi/, 'she stays inside the flat');
+});

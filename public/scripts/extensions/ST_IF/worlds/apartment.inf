@@ -42,12 +42,18 @@ Global rested = 0;    ! player has had coffee or a nap
    move bed to Bedroom;
    move cat to LivingRoom;
    StartDaemon(cat);
+   move doorkey to Hallway;
+   move mailbox to Landing;
+   move letter to mailbox;
+   move shopkeeper to Shop;
+   move newspaper to Shop;
+   move coin to Street;
    "^You are home. Wander around and try things.^";
 ];
 
 Object Hallway "Hallway"
-  with description "A narrow hallway. The living room is east, the kitchen north, the bedroom south, and a closet door is west.",
-       n_to Kitchen, e_to LivingRoom, s_to Bedroom, w_to Closet,
+  with description "A narrow hallway. The living room is east, the kitchen north, the bedroom south, a closet door is west, and the front door leads out.",
+       n_to Kitchen, e_to LivingRoom, s_to Bedroom, w_to Closet, out_to frontdoor,
   has light;
 
 Object Kitchen "Kitchen"
@@ -68,6 +74,21 @@ Object Bedroom "Bedroom"
 Object Bathroom "Bathroom"
   with description "A tiled bathroom with a washing machine and a warm radiator. The bedroom is west.",
        w_to Bedroom,
+  has light;
+
+Object Landing "Landing"
+  with description "A dim stair landing outside your flat. Your front door is back in to the west; stairs lead down.",
+       in_to frontdoor, w_to frontdoor, d_to Street,
+  has light;
+
+Object Street "Street"
+  with description "A quiet street under a grey sky. Stairs lead up to the flats, and a corner shop stands to the east.",
+       u_to Landing, e_to Shop,
+  has light;
+
+Object Shop "Corner Shop"
+  with description "A cramped corner shop, shelves stacked to the ceiling. The street is back west.",
+       w_to Street,
   has light;
 
 Object Closet "Storage Closet"
@@ -569,8 +590,9 @@ Object cat "Mochi"
           new_line; rtrue;
        ],
        fed false,
-       ! Follows the player from room to room; otherwise just hangs around.
+       ! Follows the player around the flat — but never out the front door.
        daemon [;
+          if (location == Landing or Street or Shop) rfalse;
           if (self in location) {
              if (random(3) == 1) "^Mochi winds around your ankles, purring.^";
              rfalse;
@@ -590,6 +612,59 @@ Object cat "Mochi"
              "Mochi blinks at you slowly, which is to say: no.";
        ],
   has  animate proper;
+
+! ---- Front door + outside (landing, street, corner shop) -------------------
+
+Object frontdoor "front door"
+  with name 'front' 'door',
+       description "Your flat's front door, painted a chipped blue.",
+       door_to [;
+          if (self in Hallway || location == Hallway) return Landing;
+          return Hallway;
+       ],
+       door_dir [;
+          if (self in Hallway || location == Hallway) return out_to;
+          return in_to;
+       ],
+       found_in Hallway Landing,
+       with_key doorkey,
+  has  static door openable lockable locked;
+
+Object doorkey "brass key"
+  with name 'brass' 'key' 'doorkey',
+       description "A small brass door key.",
+  has  ;
+
+Object mailbox "mailbox"
+  with name 'mailbox' 'postbox' 'box',
+       description "A row of tenant mailboxes; yours hangs slightly ajar.",
+  has  static container openable;
+
+Object letter "letter"
+  with name 'letter' 'envelope' 'post',
+       description "A handwritten letter: ~Welcome to the building! — the neighbours.~",
+  has  ;
+
+Object shopkeeper "shopkeeper"
+  with name 'shopkeeper' 'keeper' 'clerk' 'owner' 'grocer',
+       description "A genial shopkeeper behind the counter.",
+       life [;
+          Ask, Tell, Answer:
+             "~Lovely weather,~ the shopkeeper says. ~Mind the step on your way out.~";
+          Order:
+             "The shopkeeper just smiles and shrugs.";
+       ],
+  has  animate;
+
+Object newspaper "newspaper"
+  with name 'newspaper' 'paper' 'news',
+       description "Today's local paper. The headline is about the weather.",
+  has  ;
+
+Object coin "coin"
+  with name 'coin' 'penny' 'change',
+       description "A stray coin, dropped on the pavement.",
+  has  ;
 
 Include "Grammar";
 
