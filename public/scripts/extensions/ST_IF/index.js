@@ -1,6 +1,6 @@
 import {
     setExtensionPrompt, extension_prompt_types, extension_prompt_roles,
-    generateQuietPrompt, eventSource, event_types,
+    generateQuietPrompt, eventSource, event_types, saveSettingsDebounced,
 } from '../../../script.js';
 import { getContext, renderExtensionTemplateAsync, saveMetadataDebounced } from '../../extensions.js';
 import { SlashCommandParser } from '../../slash-commands/SlashCommandParser.js';
@@ -12,7 +12,7 @@ import { translate } from './translator.js';
 import { decideMove, decideAgency, decideUse } from './companion.js';
 import { runTurn } from './turn.js';
 import { readState, initState, getActiveSnapshot, rewindTo, KEY, setCompanion, getCompanionSnapshot, getRoomDescription, setRoomDescription, getInventoryText, getExitsForRoom, setExitsForRoom, getEdgesForRoom, readTogether } from './state.js';
-import { loadSettings, getSettings, wireSettingsUI, base64ToBytes } from './settings.js';
+import { loadSettings, getSettings, wireSettingsUI, base64ToBytes, bytesToBase64 } from './settings.js';
 import { stripReasoning } from './clean.js';
 import { extractExits, mergeExits, formatExitsLine } from './exits.js';
 
@@ -172,6 +172,27 @@ function ensureExitsExtracted() {
         .finally(() => { exitsExtractionInFlight = false; });
 }
 
+/** Apply freshly-loaded story bytes: store, (re)seed state, render. Shared by upload + picker. */
+async function applyStoryBytes(name, bytes) {
+    const ctx = getContext();
+    const s = getSettings();
+    s.storyName = name;
+    s.storyBase64 = bytesToBase64(bytes);
+    saveSettingsDebounced();
+    await vm.load(bytes);
+    initState(ctx.chatMetadata, name, vm.save());
+    readState(ctx.chatMetadata).summary = vm.getStatus();
+    setRoomDescription(ctx.chatMetadata, vm.getIntro());
+    await companionVM.load(bytes);
+    setCompanion(ctx.chatMetadata, { snapshot: companionVM.save(), summary: companionVM.getStatus() });
+    saveMetadataDebounced();
+    showIntroIfDebug();
+    renderRoomPanel();
+    renderHud();
+    ensureExitsExtracted();
+    $('#st_if_story_name').text(name);
+}
+
 /** Dev-mode: surface the opening scene as a toast when "Show raw game output" is on. */
 function showIntroIfDebug() {
     if (getSettings()?.showRawOutput && vm.loaded) {
@@ -287,22 +308,30 @@ jQuery(async () => {
     const html = await renderExtensionTemplateAsync('ST_IF', 'settings');
     $('#extensions_settings2').append(html);
     loadSettings();
-    wireSettingsUI(async (name) => {
-        // New story chosen: reset VM + state for the current chat.
-        const ctx = getContext();
-        const s = getSettings();
-        await vm.load(base64ToBytes(s.storyBase64));
-        initState(ctx.chatMetadata, name, vm.save());
-        readState(ctx.chatMetadata).summary = vm.getStatus();
-        setRoomDescription(ctx.chatMetadata, vm.getIntro());
-        await companionVM.load(base64ToBytes(s.storyBase64));
-        setCompanion(ctx.chatMetadata, { snapshot: companionVM.save(), summary: companionVM.getStatus() });
-        saveMetadataDebounced();
-        showIntroIfDebug();
-        renderRoomPanel();
-        renderHud();
-        ensureExitsExtracted();
+    wireSettingsUI(async (name, bytes) => {
+        // New story chosen via upload: reset VM + state for the current chat.
+        await applyStoryBytes(name, bytes);
     });
+    try {
+        const worlds = await (await fetch('/scripts/extensions/ST_IF/worlds/worlds.json')).json();
+        const sel = $('#st_if_world_select');
+        for (const w of worlds) sel.append($('<option>').val(w.file).text(w.name));
+        $('#st_if_world_load').on('click', async () => {
+            const file = String(sel.val());
+            if (!file) return;
+            const label = sel.find('option:selected').text();
+            try {
+                const bytes = new Uint8Array(await (await fetch(`/scripts/extensions/ST_IF/worlds/${file}`)).arrayBuffer());
+                await applyStoryBytes(label, bytes);
+                toastr.success(`Loaded ${label}`, 'ST_IF');
+            } catch (e) {
+                console.error('[ST_IF] world load failed', e);
+                toastr.error(String(e?.message || e), 'ST_IF: world load failed');
+            }
+        });
+    } catch (e) {
+        console.warn('[ST_IF] no bundled worlds manifest', e);
+    }
     registerSlashCommands();
     eventSource.on(event_types.CHAT_CHANGED, ensureStoryLoaded);
     eventSource.on(event_types.GENERATION_ENDED, () => {
