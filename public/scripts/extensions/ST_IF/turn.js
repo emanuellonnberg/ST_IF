@@ -1,11 +1,11 @@
 // turn.js — orchestrate one chat turn. Pure: all ST/VM deps injected.
-import { readState, recordTurn, getActiveSnapshot, setCompanion, getCompanionSnapshot, setTogether, readTogether, getFollowQueue, setFollowQueue, setRoomDescription, getRoomDescription, recordMapEdge, setInventoryText, getEdgesForRoom } from './state.js';
+import { readState, recordTurn, getActiveSnapshot, setCompanion, getCompanionSnapshot, setTogether, readTogether, getFollowQueue, setFollowQueue, setRoomDescription, getRoomDescription, recordMapEdge, setInventoryText, getEdgesForRoom, getExitsForRoom } from './state.js';
 import { dirToRoom } from './exits.js';
 import { translate as translateDefault } from './translator.js';
 import { extractMoves, zone, detectShout, validateAction } from './companion.js';
 import { buildCanonBlock, buildApartCanonBlock } from './canon.js';
 import { compactInventory } from './clean.js';
-import { parseRoomJson, sanitizeRoom, buildMetaCommands, blockedMove } from './worldgen.js';
+import { parseRoomJson, sanitizeRoom, buildMetaCommands, blockedMove, directionSuggested } from './worldgen.js';
 
 const SKIP_TYPES = new Set(['quiet', 'impersonate']);
 
@@ -95,9 +95,13 @@ export async function runTurn(deps, chat, type) {
     if (settings.dynamicWorld && deps.generateRoom && cmds.length && typeof vm.isExpandable === 'function') {
         const lastCmd = cmds[cmds.length - 1];
         const dir = blockedMove(lastCmd, outputs[outputs.length - 1] ?? '');
-        if (dir && vm.isExpandable()) {
+        const fromRoom = vm.getStatus().location;
+        // In "guided" mode only grow a direction the room's prose hints at (reusing
+        // the cached exit extraction); "anywhere" grows on any wall.
+        const mayGrow = settings.growthMode !== 'guided'
+            || directionSuggested(getExitsForRoom(metadata, fromRoom), dir);
+        if (dir && mayGrow && vm.isExpandable()) {
             try {
-                const fromRoom = vm.getStatus().location;
                 const raw = await deps.generateRoom(dir, vm.getStatus(), player.text);
                 const room = sanitizeRoom(parseRoomJson(raw) ?? {});
                 const editOut = vm.applyWorldEdits(buildMetaCommands(dir, room));

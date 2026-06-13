@@ -35,7 +35,7 @@ function buildDeps() {
         clearPrompt: () =>
             setExtensionPrompt(KEY, '', extension_prompt_types.NONE, 0),
         save: () => saveMetadataDebounced(),
-        settings: { strictness: s.strictness, injectStateOnRp: s.injectStateOnRp, companionTracking: s.companionTracking, companionBias: s.companionBias, companionAgency: s.companionAgency, companionActs: s.companionActs, companionActionSafety: s.companionActionSafety, dynamicWorld: s.dynamicWorld },
+        settings: { strictness: s.strictness, injectStateOnRp: s.injectStateOnRp, companionTracking: s.companionTracking, companionBias: s.companionBias, companionAgency: s.companionAgency, companionActs: s.companionActs, companionActionSafety: s.companionActionSafety, dynamicWorld: s.dynamicWorld, growthMode: s.growthMode },
         // Invent a room when the player walks into the void (dynamic-world mode).
         // Returns the raw model string; turn.js parses/sanitises it. skipWIAN keeps
         // World Info out but leaves the character card / scenario in context for theme.

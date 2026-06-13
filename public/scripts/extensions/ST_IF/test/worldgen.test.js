@@ -1,7 +1,7 @@
 // Unit tests for worldgen.js — pure room-JSON sanitiser + meta-command builder.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseRoomJson, sanitizeRoom, buildMetaCommands, blockedMove } from '../worldgen.js';
+import { parseRoomJson, sanitizeRoom, buildMetaCommands, blockedMove, directionSuggested } from '../worldgen.js';
 
 test('parseRoomJson extracts JSON embedded in prose / fences', () => {
     const r = parseRoomJson('Sure! ```json\n{"name":"Attic","description":"Dusty.","objects":[]}\n``` done');
@@ -66,4 +66,12 @@ test('blockedMove returns the normalised direction only on a blocked compass mov
     assert.equal(blockedMove('north', 'Kitchen\nA small kitchen.'), null);
     assert.equal(blockedMove('take lamp', 'You can\'t go that way.'), null);
     assert.equal(blockedMove('up', 'There is no way up.'), null); // pattern miss → null
+});
+
+test('directionSuggested matches normalised compass dirs (guided growth)', () => {
+    assert.equal(directionSuggested([{ dir: 'north', label: 'a door' }], 'north'), true);
+    assert.equal(directionSuggested([{ dir: 'n' }], 'north'), true);   // abbrev hint
+    assert.equal(directionSuggested([{ dir: 'east' }], 'north'), false);
+    assert.equal(directionSuggested(undefined, 'north'), false);       // not yet extracted
+    assert.equal(directionSuggested([], 'north'), false);              // no hinted exits
 });

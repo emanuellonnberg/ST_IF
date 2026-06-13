@@ -81,6 +81,12 @@
                 <span>Dynamic world (narrator grows the map)</span>
             </label>
 
+            <label for="st_if_growth_mode" title="Anywhere: any wall can become a new room. Guided: only grow where the room's description hints at an exit (a door, a path).">When does the map grow?</label>
+            <select id="st_if_growth_mode" class="text_pole">
+                <option value="anywhere">Anywhere (any direction with no exit)</option>
+                <option value="guided">Guided (only where an exit is hinted)</option>
+            </select>
+
             <hr />
             <div><b>Current room</b></div>
             <div id="st_if_room" class="st_if_room">(no game loaded)</div>

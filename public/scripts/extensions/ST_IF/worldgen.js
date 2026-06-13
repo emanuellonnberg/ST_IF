@@ -60,3 +60,15 @@ export function blockedMove(cmd, output) {
     if (!BLOCKED.test(String(output ?? ''))) return null;
     return DIR_FULL[c] ?? c;
 }
+
+const NORM = { ...DIR_FULL };
+for (const d of Object.values(DIR_FULL)) NORM[d] = d;
+/**
+ * In "guided" growth mode, only grow a direction the room's prose hints at.
+ * `exits` is the cached extraction ([{dir,label}, ...]); `dir` is a full word.
+ */
+export function directionSuggested(exits, dir) {
+    if (!Array.isArray(exits)) return false;
+    const want = NORM[String(dir).toLowerCase()] ?? dir;
+    return exits.some((e) => (NORM[String(e?.dir).toLowerCase()] ?? e?.dir) === want);
+}

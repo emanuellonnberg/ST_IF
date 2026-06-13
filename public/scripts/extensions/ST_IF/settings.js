@@ -24,6 +24,7 @@ export const defaultSettings = {
     companionInitiative: 'need',     // asked | need | proactive
     companionActionSafety: 'safe',   // safe (verb allowlist) | open
     dynamicWorld: false,             // narrator invents rooms on blocked moves (expandable worlds)
+    growthMode: 'anywhere',          // anywhere (any wall) | guided (only where the room hints an exit)
     storyName: '',
     storyBase64: '',   // the .z5/.z8 bytes, base64
 };
@@ -94,6 +95,9 @@ export function wireSettingsUI(onStoryLoaded) {
     });
     $('#st_if_dynamic_world').prop('checked', s.dynamicWorld).on('change', function () {
         s.dynamicWorld = $(this).prop('checked'); saveSettingsDebounced();
+    });
+    $('#st_if_growth_mode').val(s.growthMode).on('change', function () {
+        s.growthMode = String($(this).val()); saveSettingsDebounced();
     });
     $('#st_if_strictness').val(s.strictness).on('change', function () {
         s.strictness = String($(this).val()); saveSettingsDebounced();
