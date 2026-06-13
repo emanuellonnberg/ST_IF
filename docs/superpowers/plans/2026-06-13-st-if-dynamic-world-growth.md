@@ -552,7 +552,23 @@ git commit -m "test(ST_IF): integration coverage for runtime room growth on expa
 
 ---
 
-## Task 8: Expandable apartment/garden variants (optional, after green)
+## Task 8: Expandable apartment/garden variants (DEFERRED — see finding)
+
+> **Implementation finding (2026-06-13):** Inform 6 direction properties
+> (`n_to`/`s_to`/…) are NOT auto-provided common properties — a room only provides
+> the exit slots it explicitly declares. Verified: growing a room north of the
+> Living Room (which declares only `w_to`) is a silent no-op, because
+> `LivingRoom.n_to = newroom` writes to a property the room does not provide. The
+> empty seed and generated rooms work because they declare all six slots.
+>
+> **Therefore Task 8 requires** declaring all six exit slots (`n_to 0, s_to 0, e_to 0,
+> w_to 0, u_to 0, d_to 0`) on every authored room in `apartment.inf`/`garden.inf`
+> (preserving real exits), plus a compile-time switch to emit plain vs. expandable
+> outputs. That is a careful, self-contained chunk best done as its own task with its
+> own tests — deferred so it does not hold up the working core feature. Tracked here
+> for the follow-up.
+
+Original outline (still valid once the all-six-exits retrofit is in place):
 
 **Files:**
 - Modify: `worlds/apartment.inf`, `worlds/garden.inf` (add `Include "expanse.h";` before `Include "Grammar";`), `worlds/build.ps1`, `worlds/worlds.json`
