@@ -518,3 +518,29 @@ test('acts toggle off / apart: companionUse never called', async () => {
     await runTurn(depsApart, [{ is_user: true, mes: 'x' }], 'normal');
     assert.ok(true);
 });
+
+function makeI6DarkVM(startRoom) {
+    return {
+        loaded: true, room: startRoom, steps: [], restores: [],
+        step(cmd) {
+            this.steps.push(cmd);
+            if (cmd === 'west') { this.room = 'Darkness'; return 'Darkness\nIt is pitch dark, and you can\'t see a thing.'; }
+            if (cmd === 'look') return `You are at ${this.room}.`;
+            return `You ${cmd}.`;
+        },
+        save() { return this.room; },
+        restore(r) { this.restores.push(r); this.room = r; },
+        getStatus() { return { location: this.room, score: 0, moves: 0 }; },
+    };
+}
+
+test('dark-guard fires on the standard Inform-6 "pitch dark" wording', async () => {
+    const deps = makeDeps({ translate: async () => ['west'], vm: makeMovingVM() });
+    deps.companionVM = makeI6DarkVM('Start');
+    deps.settings = { strictness: 'strict', injectStateOnRp: false, companionTracking: true, companionBias: 0.8 };
+    const { setCompanion } = await import('../state.js');
+    setCompanion(deps.metadata, { snapshot: 'Start', summary: { location: 'Start' } });
+    await runTurn(deps, [{ is_user: true, mes: 'I go west' }], 'normal');
+    assert.equal(deps.companionVM.room, 'Start', 'refused to follow into I6 darkness');
+    assert.ok(deps.companionVM.restores.includes('Start'));
+});
