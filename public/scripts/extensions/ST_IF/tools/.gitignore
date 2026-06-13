@@ -1,0 +1,3 @@
+# Build-time Inform 6 compiler + library — fetched by worlds/build.ps1, never committed.
+*
+!.gitignore
