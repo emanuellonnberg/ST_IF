@@ -56,10 +56,73 @@ chat forks the game state with it.
 - **Translator strictness** — *Strict* fires only on clear physical actions (the
   game stays invisible until you act); *Loose* maps more verbs.
 - **Canon injection depth** — how deep in the chat the canon block is injected.
+- **Game HUD** — a toggleable strip above the chat input: 📍 location · exits ·
+  🎒 inventory (and the companion's room when you're apart). Exits are extracted from
+  the room text once per room and confirmed by your actual moves (`✓` = walked, with
+  the destination). Inventory is queried from the game itself with zero side effects
+  (the move counter doesn't advance). Click 📍 to collapse.
+- **Current room** — a persistent read-only box in the drawer showing your location,
+  the room's prose (which names exits/items), and score/moves. It updates when you
+  move or `look`, keeps the description through non-move actions (e.g. `take`), and
+  survives reloads — unlike the transient debug toast.
+- **Companion location tracking** — give `{{char}}` its own location (see below).
+
+The narration is **character-forward**: the game text is treated as the *setting*, and
+`{{char}}` reacts, speaks, and acts within it (rather than the narrator transcribing the
+room and dropping the character). When you and the companion are together, `{{char}}` is
+kept present in the scene.
+- **Companion stays near player** — how strongly the companion follows you vs wanders.
 - **Show raw game output (debug)** — when on, the raw VM output of each action
   (and the opening scene on load) is surfaced as a toast. The default is
   narrator-only (raw IF text stays hidden, shaping the narrator's prose); this
   toggle is for development/inspection.
+
+## Companion location tracking
+
+Optionally, the chat character (`{{char}}`) gets its **own location** in the world,
+separate from you. Enable **Companion location tracking** in the panel.
+
+- The companion is a **position-only marker**: it moves around the same map but never
+  takes or changes objects, so the two of you never desync the world.
+- The **"Companion stays near player"** slider sets one of three deterministic zones,
+  driven by your *actual* move directions (not a blind guess):
+  - **Glued** (≥ 0.66): the companion mirrors every move you make and stays in your room.
+  - **Trail** (0.34–0.65): it follows one room behind, consuming your moves one per turn —
+    so you briefly separate, then it catches up.
+  - **Wander** (≤ 0.33): it ignores you and roams on its own (a small LLM call picks a
+    direction).
+- When you separate, the canon names the departure direction — "{{user}} headed north as
+  you parted", and the player-room note says "{{char}} has just left, heading <dir>".
+- **Companion can act (use things)** — optional toggle, off by default. While you're
+  **together**, the companion may perform one real game action per turn (light the
+  lantern, open a door, pick something up) — it genuinely happens in the shared world
+  and the narration credits her. **Companion initiative** sets when she acts (only when
+  asked / asked or obvious need / fully proactive); **Action safety** limits what
+  (safe verb allowlist vs unrestricted — `save`/`restart`/`quit` are always blocked,
+  and any action that would kill you is rolled back). While apart she cannot affect
+  the real world (her fork is overwritten at reunion); inventory is mechanically
+  shared — "she carries it" is narration.
+- **Companion can choose (agency)** — optional toggle. Off = the deterministic zones
+  above. On = the companion decides for itself each turn (follow you, hang back, or go
+  its own way), and the slider becomes its *clinginess lean*: high = sticks with you but
+  can break off when the scene calls for it, low = independent. Costs one extra LLM call
+  per turn; same "can't reunite from afar" limitation.
+- When you're in the **same room**, play is the normal shared scene.
+- When you're **apart**, the narrator grounds in the companion's room and does **not**
+  know what you're doing elsewhere (real separation/reunion drama). Your own room is
+  narrated in a separate **comment message** — visible to you, but excluded from the
+  companion's prompt so they stay unaware.
+
+Cost note: an *apart* turn can make up to four LLM calls (translate, companion intent,
+your-room narration, companion reply). It's opt-in and the companion starts beside you,
+so cost only grows when you deliberately separate.
+
+Limitations: the companion never manipulates world objects (position only); giving it
+full independent play would desync the shared world (a Z-machine models one protagonist).
+Glued/Trail *keep* you together or trail an existing path — they do **not reunite from
+afar**: if you wander off and then crank the slider up while rooms apart, the companion
+can't navigate back (there's no learned map yet). It re-converges once you're adjacent
+again.
 
 ## Slash commands
 

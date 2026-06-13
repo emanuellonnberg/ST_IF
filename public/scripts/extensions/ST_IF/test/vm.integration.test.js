@@ -46,6 +46,22 @@ test('command echo and prompt are stripped from output', async () => {
     assert.doesNotMatch(out, />\s*$/, 'trailing prompt stripped');
 });
 
+test('two VM instances are independent (no shared story buffer)', async () => {
+    // The companion feature runs two live VMs of the same story at once. They must
+    // not share dynamic memory: moving one must not move the other.
+    const a = new IFVM();
+    await a.load(story);
+    const b = new IFVM();
+    await b.load(story);
+    const bStart = b.getStatus().location;
+    a.step('north');                               // move A only
+    assert.notEqual(a.getStatus().location, bStart, 'A moved');
+    assert.equal(b.getStatus().location, bStart, 'B unaffected by A moving');
+    const bLook = b.step('look');                  // B still in its own room
+    assert.match(bLook, new RegExp(bStart.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'));
+    assert.equal(b.getStatus().location, bStart, 'B still in its own room after look');
+});
+
 test('save/restore round-trips through base64 JSON and reproduces next-step output', async () => {
     const vm = new IFVM();
     await vm.load(story);
@@ -60,4 +76,45 @@ test('save/restore round-trips through base64 JSON and reproduces next-step outp
     const afterEast2 = vm2.step('east');
 
     assert.equal(afterEast2, afterEast1, 'restored VM reproduces identical next-step output');
+});
+
+const zork = new Uint8Array(readFileSync(new URL('./fixtures/zork1-r88-s840726.z3', import.meta.url)));
+
+test('forces verbose so re-entering a visited room prints the full description', async () => {
+    const vm = new IFVM();
+    await vm.load(zork);
+    // The house perimeter loops back to West of House (already visited at start).
+    vm.step('north'); vm.step('east'); vm.step('south');
+    const back = vm.step('west');   // re-enter West of House
+    assert.match(back, /open field|white house/i, 'full description on return');
+    assert.ok(back.trim().length > 90, 'not the brief name-only form');
+});
+
+test('query runs a command with zero net game effect', async () => {
+    const vm = new IFVM();
+    await vm.load(zork);
+    vm.step('open mailbox'); vm.step('take leaflet');
+    const before = vm.getStatus();
+    const inv = vm.query('inventory');
+    assert.match(inv, /carrying|leaflet/i, 'returns the inventory answer');
+    const after = vm.getStatus();
+    assert.deepEqual(after, before, 'location/score/moves unchanged by the query');
+    const next = vm.step('look');
+    assert.match(next, /West of House/i, 'VM still playable after a query');
+});
+
+test('ensureVerbose repairs a brief-lineage snapshot after restore', async () => {
+    const a = new IFVM();
+    await a.load(zork);
+    a.step('brief');                      // simulate an old pre-verbose save lineage
+    const briefSnap = a.save();
+
+    const b = new IFVM();
+    await b.load(zork);
+    b.restore(briefSnap);                 // restore overrides the load-time verbose
+    b.ensureVerbose();                    // the repair
+    b.step('north'); b.step('east'); b.step('south');
+    const back = b.step('west');
+    assert.ok(back.trim().length > 90, 'full description after verbose repair');
+    assert.match(back, /open field|white house/i);
 });

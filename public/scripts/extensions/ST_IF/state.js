@@ -8,8 +8,57 @@ export function readState(metadata) {
 }
 
 export function initState(metadata, storyId, snapshot) {
-    metadata[KEY] = { storyId, snapshot, summary: null, history: [] };
+    metadata[KEY] = {
+        storyId, snapshot, summary: null, history: [],
+        companion: { snapshot, summary: null, followQueue: [] },
+        together: true,
+    };
     return metadata[KEY];
+}
+
+export function getCompanionSnapshot(metadata) {
+    const s = metadata[KEY];
+    if (!s) return null;
+    return s.companion?.snapshot ?? s.snapshot ?? null;   // legacy fallback: player snapshot
+}
+
+export function setCompanion(metadata, { snapshot, summary }) {
+    const s = metadata[KEY];
+    if (!s) throw new Error('ST_IF state not initialized');
+    s.companion = { snapshot, summary: summary ?? null, followQueue: s.companion?.followQueue ?? [] };
+}
+
+export function getRoomDescription(metadata) {
+    return metadata[KEY]?.roomDescription ?? '';
+}
+
+export function setRoomDescription(metadata, text) {
+    const s = metadata[KEY];
+    if (!s) throw new Error('ST_IF state not initialized');
+    s.roomDescription = String(text ?? '');
+}
+
+export function getFollowQueue(metadata) {
+    return metadata[KEY]?.companion?.followQueue ?? [];
+}
+
+export function setFollowQueue(metadata, queue) {
+    const s = metadata[KEY];
+    if (!s) throw new Error('ST_IF state not initialized');
+    s.companion = s.companion ?? { snapshot: s.snapshot, summary: null };
+    s.companion.followQueue = Array.isArray(queue) ? queue : [];
+}
+
+export function setTogether(metadata, value) {
+    const s = metadata[KEY];
+    if (!s) throw new Error('ST_IF state not initialized');
+    s.together = !!value;
+}
+
+export function readTogether(metadata) {
+    const s = metadata[KEY];
+    if (!s) return true;
+    return s.together ?? true;   // legacy default: together
 }
 
 /**
@@ -48,4 +97,46 @@ export function rewindTo(metadata, msgIndex) {
     s.history.splice(idx);
     s.snapshot = snap;
     return snap;
+}
+
+export function getInventoryText(metadata) {
+    return metadata[KEY]?.inventoryText ?? '';
+}
+
+export function setInventoryText(metadata, text) {
+    const s = metadata[KEY];
+    if (!s) throw new Error('ST_IF state not initialized');
+    s.inventoryText = String(text ?? '');
+}
+
+/**
+ * Read cached exits for a room. Entries store the description they were extracted
+ * from; passing `desc` makes a mismatch read as uncached (stale → re-extract).
+ * Legacy array-shaped entries (pre-desc cache) also read as uncached.
+ * Omit `desc` for display reads (returns whatever is cached).
+ */
+export function getExitsForRoom(metadata, room, desc) {
+    const e = metadata[KEY]?.exitsCache?.[room];
+    if (!e || Array.isArray(e)) return undefined;
+    if (desc !== undefined && e.desc !== desc) return undefined;
+    return e.exits;
+}
+
+export function setExitsForRoom(metadata, room, exits, desc) {
+    const s = metadata[KEY];
+    if (!s) throw new Error('ST_IF state not initialized');
+    s.exitsCache = s.exitsCache ?? {};
+    s.exitsCache[room] = { exits, desc: desc ?? '' };
+}
+
+export function getEdgesForRoom(metadata, room) {
+    return metadata[KEY]?.mapEdges?.[room] ?? {};
+}
+
+export function recordMapEdge(metadata, fromRoom, dir, toRoom) {
+    const s = metadata[KEY];
+    if (!s) throw new Error('ST_IF state not initialized');
+    s.mapEdges = s.mapEdges ?? {};
+    s.mapEdges[fromRoom] = s.mapEdges[fromRoom] ?? {};
+    s.mapEdges[fromRoom][dir] = toRoom;
 }

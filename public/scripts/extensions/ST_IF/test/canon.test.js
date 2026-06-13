@@ -48,3 +48,118 @@ test('null score/moves are omitted gracefully', () => {
     assert.match(block, /Foyer/);
     assert.doesNotMatch(block, /Score:/);
 });
+
+import { buildApartCanonBlock } from '../canon.js';
+
+test('apart block grounds in the companion room and withholds player actions', () => {
+    const block = buildApartCanonBlock({
+        companionRoom: 'Misty Clearing',
+        companionScene: 'A clearing wreathed in fog. Paths lead north and east.',
+        playerLocation: 'Dark Cave',
+    });
+    assert.match(block, /apart/i);
+    assert.match(block, /Misty Clearing/);
+    assert.match(block, /fog/);
+    assert.match(block, /Dark Cave/);
+    assert.match(block, /do not/i);
+});
+
+test('apart block tolerates an empty companion scene', () => {
+    const block = buildApartCanonBlock({ companionRoom: 'Foyer', companionScene: '', playerLocation: 'Cellar' });
+    assert.match(block, /Foyer/);
+    assert.match(block, /Cellar/);
+});
+
+test('apart block adds companion and player departure directions when given', () => {
+    const block = buildApartCanonBlock({
+        companionRoom: 'Clearing', companionScene: 'Fog drifts.', playerLocation: 'Cave',
+        playerDir: 'north', companionDir: 'east',
+    });
+    assert.match(block, /You headed east/);
+    assert.match(block, /\{\{user\}\} headed north/);
+});
+
+test('apart block omits direction lines when dirs are null', () => {
+    const block = buildApartCanonBlock({
+        companionRoom: 'Clearing', companionScene: '', playerLocation: 'Cave',
+        playerDir: null, companionDir: null,
+    });
+    assert.doesNotMatch(block, /headed/);
+});
+
+test('action canon is character-forward and omits the companion line by default', () => {
+    const b = buildCanonBlock({ outputs: ['You go north.'], status: { location: 'Cave', score: 0, moves: 1 }, ranCommands: true, injectStateOnRp: false });
+    assert.match(b, /in character/i);
+    assert.match(b, /setting/i);
+    assert.match(b, /ground truth/i);
+    assert.match(b, /Action result: You go north\./);
+    assert.doesNotMatch(b, /here with you/i);
+});
+
+test('companionPresent adds the presence line', () => {
+    const b = buildCanonBlock({ outputs: ['You go north.'], status: { location: 'Cave', score: 0, moves: 1 }, ranCommands: true, injectStateOnRp: false, companionPresent: true });
+    assert.match(b, /\{\{char\}\} is here with you/);
+});
+
+test('canon honors failures and keeps the setting (never contradict)', () => {
+    const b = buildCanonBlock({ outputs: ['You\'ll have to unlock it first.'], status: { location: 'Patio', score: 0, moves: 3 }, ranCommands: true, injectStateOnRp: false });
+    assert.match(b, /never contradict/i);
+    assert.match(b, /fail/i);
+    assert.match(b, /weave/i);
+    assert.match(b, /You'll have to unlock it first\./);
+});
+
+test('apart block forcefully states separation and forbids reacting to the user', () => {
+    const b = buildApartCanonBlock({ companionRoom: 'Cellar', companionScene: 'Dust.', playerLocation: 'Hall', playerDir: null, companionDir: null });
+    assert.match(b, /NOT with \{\{user\}\}/);
+    assert.match(b, /must NOT react/i);
+    assert.match(b, /alone at: Cellar/);
+    assert.match(b, /ONLY what \{\{char\}\} does/);
+});
+
+test('apart block always attributes the last message to the user, not the char', () => {
+    const b = buildApartCanonBlock({ companionRoom: 'Cellar', companionScene: '', playerLocation: 'Hall' });
+    assert.match(b, /not yours/i);
+    assert.match(b, /did not say or do/i);
+});
+
+test('apart block with playerShouted lets the companion hear the shout', () => {
+    const b = buildApartCanonBlock({ companionRoom: 'Cellar', companionScene: '', playerLocation: 'Hall', playerShouted: true });
+    assert.match(b, /hear \{\{user\}\}.{0,40}shout/i);
+    assert.doesNotMatch(b, /cannot see or hear/i);
+    assert.match(b, /did not say or do/i, 'attribution still present');
+});
+
+test('apart block without shout keeps the absolute wall', () => {
+    const b = buildApartCanonBlock({ companionRoom: 'Cellar', companionScene: '', playerLocation: 'Hall', playerShouted: false });
+    assert.match(b, /cannot see or hear/i);
+});
+
+test('apart shout names the direction when known', () => {
+    const b = buildApartCanonBlock({ companionRoom: 'Cellar', companionScene: '', playerLocation: 'Hall', playerShouted: true, shoutDir: 'up' });
+    assert.match(b, /shouting from the up/i);
+});
+
+test('apart shout stays vague without a known direction', () => {
+    const b = buildApartCanonBlock({ companionRoom: 'Cellar', companionScene: '', playerLocation: 'Hall', playerShouted: true, shoutDir: null });
+    assert.match(b, /somewhere beyond this room/i);
+});
+
+test('together canon attributes a companion action when given', () => {
+    const b = buildCanonBlock({
+        outputs: ['Taken.', 'The brass lantern is now on.'],
+        status: { location: 'Cellar', score: 25, moves: 10 },
+        ranCommands: true, injectStateOnRp: false,
+        companionPresent: true, companionActionCmd: 'light lantern',
+    });
+    assert.match(b, /"light lantern".*\{\{char\}\}|\{\{char\}\}.*"light lantern"/);
+    assert.match(b, /deed|performed|did/i);
+});
+
+test('no attribution line without a companion action', () => {
+    const b = buildCanonBlock({
+        outputs: ['Taken.'], status: { location: 'Cellar', score: 25, moves: 10 },
+        ranCommands: true, injectStateOnRp: false, companionPresent: true,
+    });
+    assert.doesNotMatch(b, /deed/i);
+});

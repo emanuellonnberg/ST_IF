@@ -20,6 +20,42 @@
                 <span>Show raw game output (debug)</span>
             </label>
 
+            <label class="checkbox_label">
+                <input id="st_if_companion" type="checkbox" />
+                <span>Companion location tracking</span>
+            </label>
+
+            <label for="st_if_bias" title="High = the companion mirrors your moves and stays with you. Middle = trails one room behind. Low = wanders on its own.">Companion stays near player: <span id="st_if_bias_value">0.7 — glued</span></label>
+            <input id="st_if_bias" type="range" min="0" max="1" step="0.1" class="text_pole" />
+
+            <label class="checkbox_label" title="Let the companion decide each turn (follow, hang back, or go its own way). The slider becomes how clingy it is.">
+                <input id="st_if_agency" type="checkbox" />
+                <span>Companion can choose (agency)</span>
+            </label>
+
+            <label class="checkbox_label" title="Floating strip above the chat input showing location, exits, and inventory.">
+                <input id="st_if_hud_toggle" type="checkbox" />
+                <span>Show game HUD (location / exits / inventory)</span>
+            </label>
+
+            <label class="checkbox_label" title="While together, the companion may perform one game action per turn (it really happens in the world).">
+                <input id="st_if_acts" type="checkbox" />
+                <span>Companion can act (use things)</span>
+            </label>
+
+            <label for="st_if_initiative">Companion initiative</label>
+            <select id="st_if_initiative" class="text_pole">
+                <option value="asked">Only when asked</option>
+                <option value="need">Asked or obvious need</option>
+                <option value="proactive">Fully proactive</option>
+            </select>
+
+            <label for="st_if_act_safety">Action safety</label>
+            <select id="st_if_act_safety" class="text_pole">
+                <option value="safe">Safe verbs only</option>
+                <option value="open">Unrestricted (still no save/restart)</option>
+            </select>
+
             <label for="st_if_strictness">Translator strictness</label>
             <select id="st_if_strictness" class="text_pole">
                 <option value="strict">Strict (only clear actions)</option>
@@ -33,6 +69,10 @@
             <div>Story file (.z5 / .z8): <span id="st_if_story_name">none loaded</span></div>
             <input id="st_if_story_file" type="file" hidden accept=".z5,.z8,.z3" />
             <div id="st_if_story_upload" class="menu_button">Load story file</div>
+
+            <hr />
+            <div><b>Current room</b></div>
+            <div id="st_if_room" class="st_if_room">(no game loaded)</div>
         </div>
     </div>
 </div>

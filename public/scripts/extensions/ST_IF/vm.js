@@ -177,7 +177,10 @@ export class IFVM {
             vm, Glk, GlkOte: glkote, Dialog: dialog, GiDispa: new ZVMDispatch(),
             do_vm_autosave: snapshot ? 1 : 0,
         };
-        vm.prepare(storyBytes instanceof Uint8Array ? storyBytes : new Uint8Array(storyBytes), options);
+        // Always hand the VM its OWN copy of the bytes: ZVM keeps a live reference
+        // to the story buffer for dynamic memory, so two VM instances sharing one
+        // ArrayBuffer would corrupt each other (the player and companion VMs do).
+        vm.prepare(new Uint8Array(storyBytes), options);
         Glk.init(options);   // synchronously runs the VM to its first input request
         this._glkote = glkote;
         this._dialog = dialog;
@@ -191,10 +194,25 @@ export class IFVM {
     async load(bytes) {
         this._story = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
         this._boot(this._story, null);
+        // Force VERBOSE mode so re-entering a visited room still prints the full
+        // description (Z-machine defaults to BRIEF: name-only on return). The
+        // confirmation ("Maximum verbosity.") is discarded; the intro was already
+        // captured during _boot.
+        this.ensureVerbose();
     }
 
     /** The opening scene text captured at load (empty after a restore). */
     getIntro() { return this._intro; }
+
+    /**
+     * Re-assert VERBOSE mode. The flag lives in game memory, so restoring a
+     * snapshot whose lineage predates verbose-forcing silently reverts to BRIEF
+     * (name-only room descriptions on revisit). Idempotent; call after restoring
+     * a stored snapshot.
+     */
+    ensureVerbose() {
+        try { this.step('verbose'); } catch { /* game without a verbose verb — ignore */ }
+    }
 
     /** Run one parser command, return the cleaned text the VM emitted. */
     step(command) {
@@ -202,6 +220,19 @@ export class IFVM {
         this._glkote.takeBuffer();
         this._glkote.sendLine(String(command));
         return cleanOutput(this._glkote.takeBuffer(), String(command));
+    }
+
+    /**
+     * Run a command and roll the VM back: returns the command's output with zero
+     * net game effect (the restore rewinds everything, move counter included).
+     * Used for read-only queries like 'inventory'.
+     */
+    query(command) {
+        if (!this._loaded) throw new Error('ST_IF: no story loaded');
+        const snap = this.save();
+        const out = this.step(command);
+        this.restore(snap);
+        return out;
     }
 
     /** Serialize full VM state to a base64 string. */
