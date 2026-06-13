@@ -1,0 +1,62 @@
+! garden.inf — ST_IF sandbox test world. Dedicated to the public domain (CC0).
+! An outdoor counterpart to the apartment: a porch hub, four areas (one dark
+! toolshed), a portable lantern, a switchable fountain, and takeables.
+Constant Story "GARDEN";
+Constant Headline "^A small ST_IF sandbox garden.^";
+Include "Parser";
+Include "VerbLib";
+
+[ Initialise;
+   location = Porch;
+   move trowel to Greenhouse;
+   move lantern to Porch;
+   move fountain to Pond;
+   "^A bright afternoon in the garden.^";
+];
+
+Object Porch "Porch"
+  with description "A wooden porch. The lawn lies north, the greenhouse east, and a toolshed stands west.",
+       n_to Lawn, e_to Greenhouse, w_to Toolshed,
+  has light;
+
+Object Lawn "Lawn"
+  with description "A wide lawn. A path leads south to the porch and east to a pond.",
+       s_to Porch, e_to Pond,
+  has light;
+
+Object Pond "Pond"
+  with description "A still pond ringed with reeds. The lawn is west.",
+       w_to Lawn,
+  has light;
+
+Object Greenhouse "Greenhouse"
+  with description "A glass greenhouse, warm and humid. The porch is west.",
+       w_to Porch,
+  has light;
+
+Object Toolshed "Toolshed"
+  with description "A dim toolshed cluttered with tools. The porch is east.",
+       e_to Porch;
+
+Object trowel "garden trowel"
+  with name 'trowel' 'garden', description "A rusty trowel.",
+  has ;
+
+Object lantern "lantern"
+  with name 'lantern' 'lamp' 'light',
+       description "An oil lantern.",
+       before [;
+         SwitchOn: give self light; "The lantern flares to life.";
+         SwitchOff: give self ~light; "You shutter the lantern.";
+       ],
+  has switchable;
+
+Object fountain "garden fountain"
+  with name 'fountain' 'switch' 'valve', description "A small fountain with a brass valve.",
+       before [;
+         SwitchOn: "The fountain bubbles to life.";
+         SwitchOff: "The fountain stills.";
+       ],
+  has switchable static;
+
+Include "Grammar";
