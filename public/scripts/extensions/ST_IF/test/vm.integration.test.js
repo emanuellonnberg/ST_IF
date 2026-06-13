@@ -394,3 +394,23 @@ test('sleep: napping in the bed leaves you rested; no bed elsewhere', async () =
     assert.match(vm.step('sleep'), /rested/i);
     assert.match(vm.step('status'), /rested/i);
 });
+
+// --- The cat, Mochi --------------------------------------------------------
+test('cat: Mochi follows you from room to room', async () => {
+    const vm = new IFVM();
+    await vm.load(apt);
+    vm.step('east');                           // Living Room (Mochi starts here)
+    assert.match(vm.step('west'), /Mochi pads in/i, 'she follows into the hallway');
+    assert.match(vm.step('look'), /Mochi/);
+});
+
+test('cat: petting and feeding Mochi milk', async () => {
+    const vm = new IFVM();
+    await vm.load(apt);
+    vm.step('east');
+    assert.match(vm.step('pet cat'), /purr/i);
+    vm.step('west'); vm.step('north');         // Kitchen; she follows
+    vm.step('open fridge'); vm.step('take milk');
+    assert.match(vm.step('give milk to cat'), /laps up the milk/i);
+    assert.match(vm.step('examine mochi'), /full/i);
+});

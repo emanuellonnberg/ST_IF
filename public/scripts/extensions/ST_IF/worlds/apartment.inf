@@ -40,6 +40,8 @@ Global rested = 0;    ! player has had coffee or a nap
    move coffeemaker to Kitchen;
    move houseplant to LivingRoom;
    move bed to Bedroom;
+   move cat to LivingRoom;
+   StartDaemon(cat);
    "^You are home. Wander around and try things.^";
 ];
 
@@ -557,6 +559,38 @@ Object bed "bed"
   with name 'bed' 'mattress' 'covers', description "A neatly made double bed.",
   has  static supporter enterable;
 
+! ---- The cat, Mochi (an in-world companion that follows you) ----------------
+
+Object cat "Mochi"
+  with name 'mochi' 'cat' 'kitten' 'animal' 'grey',
+       description [;
+          print "Mochi, a small grey cat with bright green eyes.";
+          if (self.fed) print " She looks contentedly full.";
+          new_line; rtrue;
+       ],
+       fed false,
+       ! Follows the player from room to room; otherwise just hangs around.
+       daemon [;
+          if (self in location) {
+             if (random(3) == 1) "^Mochi winds around your ankles, purring.^";
+             rfalse;
+          }
+          move self to location;
+          "^Mochi pads in after you and settles nearby.^";
+       ],
+       life [;
+          Give:
+             if (noun == milk) {
+                remove milk;
+                self.fed = true;
+                "Mochi laps up the milk eagerly, then licks her whiskers clean.";
+             }
+             "Mochi sniffs it, unimpressed, and looks away.";
+          Order, Ask, Answer, Tell:
+             "Mochi blinks at you slowly, which is to say: no.";
+       ],
+  has  animate proper;
+
 Include "Grammar";
 
 ! ---- Custom verbs ----------------------------------------------------------
@@ -671,3 +705,14 @@ Extend 'sleep' replace
 
 Verb 'condition' 'status'
    *                          -> Status;
+
+! ---- Pet the cat -----------------------------------------------------------
+
+[ PetSub;
+   if (noun ~= cat) "That doesn't want petting.";
+   if (cat notin location) "Mochi isn't here.";
+   "You stroke Mochi; she arches into your hand and purrs.";
+];
+
+Verb 'pet' 'stroke' 'fuss'
+   * noun                     -> Pet;
