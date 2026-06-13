@@ -41,7 +41,7 @@ function buildDeps() {
         // World Info out but leaves the character card / scenario in context for theme.
         generateRoom: (dir, status, _playerText) =>
             generateQuietPrompt({
-                quietPrompt: `[The player is at "${status.location}" and moves ${dir} into a place that does not exist yet. Invent a room that fits the current story, setting, and tone. Respond with ONLY JSON, no prose: {"name":"short room name","description":"2-3 vivid sentences","objects":[{"name":"one or two word noun","description":"short","takeable":true}]}. Use 0-3 objects; object names must be simple lowercase nouns.]`,
+                quietPrompt: `[The player is at "${status.location}" and moves ${dir} into a place that does not exist yet. Invent a room that fits the current story, setting, and tone. In the description, name one or two onward exits as concrete ways to go (e.g. "a door leads north", "a passage heads east") so the world can keep growing. Respond with ONLY JSON, no prose: {"name":"short room name","description":"2-3 vivid sentences that mention the onward exits","objects":[{"name":"one or two word noun","description":"short","takeable":true}]}. Use 0-3 objects; object names must be simple lowercase nouns.]`,
                 responseLength: 200,
                 skipWIAN: true,
             }),

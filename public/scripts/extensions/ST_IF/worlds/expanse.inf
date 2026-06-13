@@ -12,7 +12,7 @@ Include "VerbLib";
 
 ! The seed room must declare all six exit slots (= 0) so new rooms can link into it.
 Object Origin "Origin"
-  with description "A featureless origin point. Paths could lead anywhere from here.",
+  with description "A featureless origin point. Paths lead off to the north, south, east, and west, and a stair heads down.",
        n_to 0, s_to 0, e_to 0, w_to 0, u_to 0, d_to 0,
   has light;
 
