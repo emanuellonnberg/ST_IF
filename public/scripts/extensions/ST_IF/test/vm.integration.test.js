@@ -445,3 +445,38 @@ test('cat: Mochi will not follow you out the front door', async () => {
     vm.step('out');                            // Landing
     assert.doesNotMatch(vm.step('look'), /Mochi/, 'she stays inside the flat');
 });
+
+// --- Deeper cooking: fry an egg, wash up ------------------------------------
+test('cooking: fry an egg on the stove and eat it', async () => {
+    const vm = new IFVM();
+    await vm.load(apt);
+    vm.step('north');                          // Kitchen
+    vm.step('open cupboard'); vm.step('take pot');
+    vm.step('open fridge'); vm.step('take egg');
+    vm.step('put egg in pot'); vm.step('put pot on stove'); vm.step('turn on stove');
+    assert.match(waitUntil(vm, /fried|sets into/i), /fried|sets into/i);
+    vm.step('turn off stove');
+    assert.match(vm.step('eat egg'), /tasty/i);
+});
+
+test('cooking: eating leaves a dirty pot you wash at the tap', async () => {
+    const vm = await kitchenReady();
+    vm.step('turn on stove');
+    for (let i = 0; i < 8; i++) vm.step('wait');
+    vm.step('turn off stove');
+    vm.step('eat spaghetti');
+    assert.match(vm.step('examine pot'), /dried-on food|crusted/i);
+    assert.match(vm.step('wash pot'), /clean/i);
+    assert.doesNotMatch(vm.step('examine pot'), /crusted|dried-on/i);
+});
+
+test('coffee: the mug is stained after use and washes clean', async () => {
+    const vm = new IFVM();
+    await vm.load(apt);
+    vm.step('north');
+    vm.step('take mug'); vm.step('brew coffee');
+    waitUntil(vm, /ready/i);
+    vm.step('drink coffee');
+    assert.match(vm.step('examine mug'), /dregs|stained/i);
+    assert.match(vm.step('wash mug'), /clean/i);
+});

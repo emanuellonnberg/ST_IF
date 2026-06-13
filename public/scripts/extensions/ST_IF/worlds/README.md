@@ -21,7 +21,11 @@ room + portable light, a switchable lamp, and takeable objects.
   `dig` the Living Room houseplant to get your hands filthy (`status` to check), which the
   shower washes off — and pulling clean laundry on with dirty hands re-soils it. The
   Kitchen `coffee machine` brews into the mug (`brew coffee`, then `drink coffee`) and the
-  Bedroom `bed` lets you `sleep`; both leave you `rested`.
+  Bedroom `bed` lets you `sleep`; both leave you `rested`. **Mochi** the cat follows you
+  around the flat (`pet` her, `give milk to cat`) but won't go outside. A lockable **front
+  door** (take the key, `unlock door with key`, then `out`) leads to a Landing with a
+  mailbox letter, a Street, and a Corner Shop. Deeper cooking: `fry` an egg in the pot on
+  the stove, and `wash` the dirty pot/mug at the tap after eating.
 - `garden.inf` / `garden.z5` — outdoors: Porch hub, Lawn, Greenhouse, Pond, dark Toolshed;
   lantern, fountain, trowel.
 

@@ -100,15 +100,23 @@ Object mug "ceramic mug"
        description [;
           print "A plain ceramic mug.";
           if (self.coffee) print " It is full of hot, dark coffee.";
+          else if (self.dirty) print " It is stained with coffee dregs.";
           new_line; rtrue;
        ],
        coffee false,
+       dirty false,
        before [;
           Drink:
              if (self.coffee == false) "The mug is empty.";
              self.coffee = false;
+             self.dirty = true;
              rested = true;
              "You drink the hot, bitter coffee. You feel awake and alert.";
+          Rub:                          ! "wash mug" at the sink
+             if (tap notin location) "You need a sink to wash up.";
+             if (self.dirty == false) "The mug is already clean.";
+             self.dirty = false;
+             "You rinse the mug clean under the tap.";
        ],
   has ;
 
@@ -172,12 +180,15 @@ Object stove "stove"
        before [;
           SwitchOn:
              if (pot notin self) "There is nothing on the stove to heat.";
-             if (pot.water == false) "The pot is empty — it would just scorch. Add water first.";
+             if (pot.water == false && egg notin pot)
+                "The pot is empty — it would just scorch. Add water (or an egg) first.";
              give self on;
              self.cookcount = 0;
              StartDaemon(self);
              if (spaghetti in pot && spaghetti.cooked == false && spaghetti.burnt == false)
                 StartTimer(spaghetti, 8);
+             if (egg in pot && egg.fried == false)
+                StartTimer(egg, 2);
              "You light the stove; a burner glows to life.";
           SwitchOff:
              give self ~on;
@@ -205,6 +216,7 @@ Object pot "pot"
           else print " It is empty";
           if (self.salted) print " (salted)";
           print ".";
+          if (self.dirty) print " It is crusted with dried-on food.";
           if (spaghetti in self) {
              if (spaghetti.burnt) print " A charred clump of ruined spaghetti is stuck inside.";
              else if (spaghetti.cooked) print " Cooked spaghetti sits in it.";
@@ -214,6 +226,7 @@ Object pot "pot"
        ],
        water false,
        salted false,
+       dirty false,
        ! "fill pot" / "put salt in pot" route here; other inserts are normal.
        before [;
           Fill:
@@ -221,6 +234,11 @@ Object pot "pot"
              if (self.water) "The pot is already full.";
              self.water = true;
              "You fill the pot with water at the tap.";
+          Rub:                          ! "wash pot" / "clean pot" at the sink
+             if (tap notin location) "You need a sink to wash up.";
+             if (self.dirty == false) "The pot is already clean.";
+             self.dirty = false;
+             "You scrub the pot clean under the tap.";
           Receive:
              if (noun == salt) {
                 self.salted = true;
@@ -262,6 +280,7 @@ Object spaghetti "spaghetti"
           Eat:
              if (self.burnt) "Charred to ash. Inedible.";
              if (self.cooked == false) "You crunch a few raw, brittle strands. Unpleasant — best cooked first.";
+             pot.dirty = true;          ! eating leaves a dirty pot to wash up
              if (self.buttered) { remove self; "You eat the rich, buttery spaghetti. Wonderful."; }
              if (pot.salted) { remove self; "You eat the warm, well-salted spaghetti. Delicious."; }
              remove self;
@@ -478,7 +497,26 @@ Object fridge "refrigerator"
   has  static container openable;
 
 Object egg "egg"
-  with name 'egg', description "A cold white egg.",
+  with name 'egg' 'yolk',
+       description [;
+          if (self.fried) "A neatly fried egg, golden at the edges.";
+          "A cold, raw white egg.";
+       ],
+       fried false,
+       time_left 0,
+       ! Fries in 2 turns on the lit stove (StartTimer set in stove SwitchOn).
+       time_out [;
+          if (self notin pot || pot notin stove || stove hasnt on)
+             "^The egg never finished frying — the heat was interrupted.^";
+          self.fried = true;
+          pot.dirty = true;
+          "^The egg sizzles and sets into a golden fried egg.^";
+       ],
+       before [;
+          Eat:
+             if (self.fried) { remove self; "You eat the fried egg. Tasty."; }
+             "Raw egg, straight from the shell? Best fry it first.";
+       ],
   has  edible;
 
 Object butter "pat of butter"
@@ -567,6 +605,7 @@ Object coffeemaker "coffee machine"
           Drink:
              if (mug.coffee) {
                 mug.coffee = false;
+                mug.dirty = true;
                 rested = true;
                 "You drink the hot, bitter coffee. You feel awake and alert.";
              }
@@ -791,3 +830,10 @@ Verb 'condition' 'status'
 
 Verb 'pet' 'stroke' 'fuss'
    * noun                     -> Pet;
+
+! ---- Wash up dirty dishes -------------------------------------------------
+! 'clean'/'scrub' already map to the Rub action (handled in pot/mug.before);
+! add 'wash' as a friendlier synonym.
+
+Verb 'wash'
+   * noun                     -> Rub;
