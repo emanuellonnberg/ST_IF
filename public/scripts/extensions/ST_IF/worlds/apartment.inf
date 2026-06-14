@@ -48,6 +48,9 @@ Global rested = 0;    ! player has had coffee or a nap
    move shopkeeper to Shop;
    move newspaper to Shop;
    move coin to Street;
+#Ifdef MAKE_EXPANDABLE;
+   XP_RegisterFrontier(Street, 'street');   ! the street is where the neighbourhood may grow
+#Endif;
    "^You are home. Wander around and try things.^";
 ];
 
@@ -83,7 +86,7 @@ Object Landing "Landing"
 
 Object Street "Street"
   with description "A quiet street under a grey sky. Stairs lead up to the flats, and a corner shop stands to the east.",
-       u_to Landing, e_to Shop,
+       u_to Landing, e_to Shop, n_to 0, s_to 0, w_to 0, d_to 0,   ! extra slots: growable frontier
   has light;
 
 Object Shop "Corner Shop"
@@ -705,6 +708,9 @@ Object coin "coin"
        description "A stray coin, dropped on the pavement.",
   has  ;
 
+#Ifdef MAKE_EXPANDABLE;
+Include "expanse.h";
+#Endif;
 Include "Grammar";
 
 ! ---- Custom verbs ----------------------------------------------------------

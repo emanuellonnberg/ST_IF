@@ -551,6 +551,21 @@ test('expanse: an LLM-style cross-link connects two rooms both ways', async () =
     assert.match(vm.step('up'), /vault/i);        // both-ways
 });
 
+// --- Expandable authored world (apartment frontier) ------------------------
+const apartmentExp = new Uint8Array(readFileSync(new URL('../worlds/apartment-expanse.z5', import.meta.url)));
+
+test('apartment frontier: interior sealed, the Street grows after the door', async () => {
+    const vm = new IFVM(); await vm.load(apartmentExp);
+    assert.equal(vm.xCanGrow(), 'no');                 // Hallway — interior
+    vm.step('north'); assert.equal(vm.xCanGrow(), 'no'); vm.step('south');   // Kitchen sealed
+    vm.step('take key'); vm.step('unlock door with key'); vm.step('open door'); vm.step('out'); vm.step('down');
+    assert.match(vm.getStatus().location, /Street/);
+    assert.equal(vm.xCanGrow(), 'street');             // the frontier
+    vm.applyWorldEdits(['xroom north alley', 'xdesc a narrow alley']);
+    assert.match(vm.step('north'), /alley/i);
+    assert.match(vm.step('south'), /Street/);          // links back
+});
+
 // --- Expandable authored world (garden frontier) ---------------------------
 const gardenExp = new Uint8Array(readFileSync(new URL('../worlds/garden-expanse.z5', import.meta.url)));
 

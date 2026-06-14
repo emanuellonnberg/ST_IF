@@ -1,0 +1,5 @@
+! apartment-expanse.inf — the apartment compiled WITH the runtime-growth pool. CC0.
+! Defines MAKE_EXPANDABLE, then includes the plain apartment source (whose
+! #Ifdef MAKE_EXPANDABLE blocks pull in expanse.h and register the Street frontier).
+Constant MAKE_EXPANDABLE;
+Include "apartment.inf";
