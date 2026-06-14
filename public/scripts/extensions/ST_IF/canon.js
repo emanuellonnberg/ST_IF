@@ -11,11 +11,11 @@ function statusLine(status) {
  * @param {{outputs: string[], status: {location:string, score:number|null, moves:number|null}, ranCommands: boolean, injectStateOnRp: boolean, companionPresent?: boolean, companionActionCmd?: string|null}} args
  * @returns {string} canon block, or '' when nothing should be injected
  */
-export function buildCanonBlock({ outputs, status, ranCommands, injectStateOnRp, companionPresent, companionActionCmd, npcLine, npcSpeakingFor }) {
+export function buildCanonBlock({ outputs, status, ranCommands, injectStateOnRp, companionPresent, companionActionCmd, npcLine, npcSpeakingFor, questLine, effectLine }) {
     if (!ranCommands) {
         if (!injectStateOnRp) return '';
         const base = `[GAME STATE — ground truth, do not contradict]\n${statusLine(status)}`;
-        return npcLine ? `${base}\n${npcLine}` : base;
+        return [base, npcLine, questLine].filter(Boolean).join('\n');
     }
     const result = outputs.join('\n').trim();
     const lines = [
@@ -27,6 +27,8 @@ export function buildCanonBlock({ outputs, status, ranCommands, injectStateOnRp,
     if (companionPresent) lines.push('{{char}} is here with you.');
     if (npcLine) lines.push(npcLine);
     if (npcSpeakingFor) lines.push(`${npcSpeakingFor} is here and will answer for themselves — narrate the scene and action, but don't put words in ${npcSpeakingFor}'s mouth.`);
+    if (questLine) lines.push(questLine);
+    if (effectLine) lines.push(effectLine);
     return lines.join('\n');
 }
 

@@ -384,6 +384,12 @@ Object locket "silver locket"
        description "A tarnished silver locket on a fine chain.",
   has ;
 
+! ---- NPC effects: expose the gold meter to effects.h so registry NPCs can
+! ---- grant/take coin (validated + bounded by the engine). -------------------
+[ XE_AddGold n; gold = gold + n; if (gold < 0) gold = 0; ];
+[ XE_Gold; return gold; ];
+Include "effects.h";
+
 Include "Grammar";
 
 ! ---- Economy readouts ------------------------------------------------------

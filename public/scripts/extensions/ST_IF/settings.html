@@ -87,6 +87,15 @@
                 <option value="guided">Guided (only where an exit is hinted)</option>
             </select>
 
+            <label for="st_if_effect_safety" title="Whether an NPC can change game state (grant gold, set quest flags). Off: NPCs only talk. Safe: grant/flag. Open: also take.">NPC effects (rewards / quests)</label>
+            <select id="st_if_effect_safety" class="text_pole">
+                <option value="off">Off — NPCs only talk</option>
+                <option value="safe">Safe — grant gold / set flags</option>
+                <option value="open">Open — also take gold</option>
+            </select>
+            <label for="st_if_max_grant">Max gold an NPC can grant/take at once</label>
+            <input id="st_if_max_grant" type="number" min="1" max="500" class="text_pole" />
+
             <div>Grown world: <span title="Use /if-map to see the rooms you've grown.">share or reload it</span></div>
             <input id="st_if_world_import_file" type="file" hidden accept=".json" />
             <div class="flex-container">

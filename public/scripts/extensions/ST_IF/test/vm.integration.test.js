@@ -551,6 +551,23 @@ test('expanse: an LLM-style cross-link connects two rooms both ways', async () =
     assert.match(vm.step('up'), /vault/i);        // both-ways
 });
 
+// --- NPC effects on the tavern (effects.h) ---------------------------------
+const tavern = new Uint8Array(readFileSync(new URL('../worlds/tavern.z5', import.meta.url)));
+
+test('effects: xgrant/xtake adjust the tavern gold (clamped); xflag round-trips', async () => {
+    const vm = new IFVM(); await vm.load(tavern);
+    assert.equal(vm.query('xgold').trim(), '20');           // tavern starts with 20 gold
+    vm.step('xgrant 10');
+    assert.equal(vm.query('xgold').trim(), '30');           // reward is real ground truth
+    vm.step('xtake 5');
+    assert.equal(vm.query('xgold').trim(), '25');
+    vm.step('xtake 1000');
+    assert.equal(vm.query('xgold').trim(), '0');            // clamped at 0
+    assert.equal(vm.query('xflagq rats_done').trim(), '0'); // arbitrary flag, unset
+    vm.step('xflag rats_done');
+    assert.equal(vm.query('xflagq rats_done').trim(), '1'); // set, by text (not in dictionary)
+});
+
 // --- Expandable authored world (apartment frontier) ------------------------
 const apartmentExp = new Uint8Array(readFileSync(new URL('../worlds/apartment-expanse.z5', import.meta.url)));
 

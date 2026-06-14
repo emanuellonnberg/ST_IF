@@ -2,6 +2,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildCanonBlock } from '../canon.js';
 
+test('quest and effect lines appear only when provided', () => {
+    const base = { outputs: ['A tavern.'], status: { location: 'tavern', score: 0, moves: 1 }, ranCommands: true };
+    assert.doesNotMatch(buildCanonBlock(base), /Quests here|gold across/);
+    const withQE = buildCanonBlock({ ...base, questLine: 'Quests here: rats — clear the cellar (reward 10 gold) [active].', effectLine: 'The barkeep slides 10 gold across; you now have 30.' });
+    assert.match(withQE, /Quests here: rats/);
+    assert.match(withQE, /slides 10 gold across/);
+});
+
 test('present NPCs and the speaking cue appear only when provided', () => {
     const base = { outputs: ['A tavern.'], status: { location: 'tavern', score: 0, moves: 1 }, ranCommands: true };
     const plain = buildCanonBlock(base);

@@ -34,6 +34,11 @@ room + portable light, a switchable lamp, and takeable objects.
   (sober → tipsy → cut off at roaring drunk), ladle `stew` to get fed, rent a bed to `rest`,
   and `gamble` dice or cards. `status` reports gold/drink/hunger/rest/day. A worked example
   of a larger authored hub (originally developed in the standalone `adventurer_tavern` repo).
+  Includes `effects.h`, so registry NPCs can affect its `gold` meter: enable **NPC effects**
+  in settings, `/if-npc add barkeep @ commonroom : a gruff innkeeper`, bind a card, and
+  `/if-quest add rats giver=barkeep goal="clear the cellar" reward=gold 10 needs=rats_done` —
+  the barkeep then pays the bounded reward (the LLM proposes, the engine validates, the VM
+  grants real gold).
 
 ## Rebuilding
 
