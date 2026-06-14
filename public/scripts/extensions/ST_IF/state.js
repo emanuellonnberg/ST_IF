@@ -13,6 +13,7 @@ export function initState(metadata, storyId, snapshot) {
         companion: { snapshot, summary: null, followQueue: [] },
         together: true,
         grownRooms: { rooms: [], edges: [], anchors: {} },
+        npcs: [],
     };
     return metadata[KEY];
 }
@@ -132,6 +133,17 @@ export function setExitsForRoom(metadata, room, exits, desc) {
 
 export function getEdgesForRoom(metadata, room) {
     return metadata[KEY]?.mapEdges?.[room] ?? {};
+}
+
+/** In-world NPCs: [{ name, room, blurb, card? }]. */
+export function getNpcs(metadata) {
+    return metadata[KEY]?.npcs ?? [];
+}
+
+export function setNpcs(metadata, list) {
+    const s = metadata[KEY];
+    if (!s) throw new Error('ST_IF state not initialized');
+    s.npcs = Array.isArray(list) ? list : [];
 }
 
 const ANCHOR_SPAN = 100000;   // frontier clusters sit this far apart on the grid

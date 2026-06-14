@@ -11,11 +11,12 @@ import { IFVM } from './vm.js';
 import { translate } from './translator.js';
 import { decideMove, decideAgency, decideUse } from './companion.js';
 import { runTurn } from './turn.js';
-import { readState, initState, getActiveSnapshot, rewindTo, KEY, setCompanion, getCompanionSnapshot, getRoomDescription, setRoomDescription, getInventoryText, getExitsForRoom, setExitsForRoom, getEdgesForRoom, readTogether, getWorldGraph, recordRoom, recordEdge, setAnchor } from './state.js';
+import { readState, initState, getActiveSnapshot, rewindTo, KEY, setCompanion, getCompanionSnapshot, getRoomDescription, setRoomDescription, getInventoryText, getExitsForRoom, setExitsForRoom, getEdgesForRoom, readTogether, getWorldGraph, recordRoom, recordEdge, setAnchor, getNpcs, setNpcs } from './state.js';
 import { loadSettings, getSettings, wireSettingsUI, base64ToBytes, bytesToBase64 } from './settings.js';
 import { stripReasoning } from './clean.js';
 import { extractExits, mergeExits, formatExitsLine } from './exits.js';
 import { formatMap, planReplay, upconvertV1 } from './worldmap.js';
+import { addNpc, removeNpc, bindCard } from './npc.js';
 
 const vm = new IFVM();
 const companionVM = new IFVM();
@@ -58,6 +59,24 @@ function buildDeps() {
         companionDecide: (playerText, playerRoom, companionRoom, playerMoves) =>
             decideAgency(playerText, playerRoom, companionRoom, playerMoves, getSettings().companionBias,
                 (prompt) => generateQuietPrompt({ quietPrompt: prompt, responseLength: 40, skipWIAN: true })),
+        onNpcSpeak: async ({ npc, playerText, room }) => {
+            const ctx = getContext();
+            const card = (ctx.characters || []).find((c) => c.name === npc.card || c.avatar === npc.card);
+            if (!card) { console.warn('[ST_IF] NPC card not found:', npc.card); return; }   // Tier-1 fallback
+            const persona = [card.description, card.personality].filter(Boolean).join(' ').replace(/\s+/g, ' ').slice(0, 1200);
+            let reply;
+            try {
+                reply = await generateQuietPrompt({
+                    quietPrompt: `[You are ${card.name}, an NPC the player is speaking with. ${persona}\nYou are at "${room}". The player said: "${playerText}". Reply in character as ${card.name} — 1-3 lines of dialogue and small action. Do not narrate the player or the wider scene.]`,
+                    responseLength: 160,
+                    skipWIAN: true,
+                });
+            } catch (e) {
+                console.error('[ST_IF] NPC speak failed', e);
+                return;
+            }
+            postNpcMessage(card, stripReasoning(reply));
+        },
         onNarratePlayerRoom: async ({ playerRoom, outputs, companionDir }) => {
             const result = (outputs || []).join('\n').trim() || '(you wait)';
             const leftNote = companionDir ? ` {{char}} has just left, heading ${companionDir}.` : '';
@@ -99,6 +118,23 @@ function postComment(text) {
         send_date: ctx.getMessageTimeStamp ? ctx.getMessageTimeStamp() : new Date().toISOString(),
         mes: String(text ?? '').trim(),
         extra: { type: 'comment', isSmallSys: false },
+    };
+    ctx.chat.push(message);
+    ctx.addOneMessage(message);
+    if (typeof ctx.saveChat === 'function') ctx.saveChat();
+}
+
+/** Post an NPC's line as a normal (in-prompt) message under the card's name + avatar. */
+function postNpcMessage(card, text) {
+    const ctx = getContext();
+    const message = {
+        name: card.name,
+        is_user: false,
+        is_system: false,
+        force_avatar: card.avatar ? `/thumbnail?type=avatar&file=${encodeURIComponent(card.avatar)}` : undefined,
+        send_date: ctx.getMessageTimeStamp ? ctx.getMessageTimeStamp() : new Date().toISOString(),
+        mes: String(text ?? '').trim(),
+        extra: {},
     };
     ctx.chat.push(message);
     ctx.addOneMessage(message);
@@ -362,6 +398,42 @@ function registerSlashCommands() {
     }));
 
     SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+        name: 'if-npc',
+        helpString: 'Manage in-world NPCs: add <name> @ <room> : <blurb> | bind <name> <card> | list | remove <name>.',
+        unnamedArgumentList: [new SlashCommandArgument('subcommand + args', [ARGUMENT_TYPE.STRING], false, false, '')],
+        returns: ARGUMENT_TYPE.STRING,
+        callback: async (_args, value) => {
+            const md = getContext().chatMetadata;
+            if (!readState(md)) return 'No story loaded.';
+            const v = String(value ?? '').trim();
+            const sub = (v.split(/\s+/)[0] || 'list').toLowerCase();
+            const rest = v.slice(sub.length).trim();
+            let list = getNpcs(md);
+            if (sub === 'add') {
+                const m = rest.match(/^(\S+)\s*@\s*(\S+)\s*:?\s*(.*)$/);
+                if (!m) return 'Usage: /if-npc add <name> @ <room> : <blurb>';
+                list = addNpc(list, { name: m[1].toLowerCase(), room: m[2].toLowerCase(), blurb: m[3] || '' });
+                setNpcs(md, list); saveMetadataDebounced();
+                return `Added NPC "${m[1].toLowerCase()}" in ${m[2].toLowerCase()}.`;
+            }
+            if (sub === 'bind') {
+                const m = rest.match(/^(\S+)\s+(.+)$/);
+                if (!m) return 'Usage: /if-npc bind <name> <card name>   (use - to unbind)';
+                list = bindCard(list, m[1].toLowerCase(), m[2].trim());
+                setNpcs(md, list); saveMetadataDebounced();
+                return `Bound "${m[1].toLowerCase()}" to card "${m[2].trim()}".`;
+            }
+            if (sub === 'remove') {
+                list = removeNpc(list, rest.toLowerCase());
+                setNpcs(md, list); saveMetadataDebounced();
+                return `Removed "${rest.toLowerCase()}".`;
+            }
+            if (!list.length) return 'No NPCs yet. /if-npc add <name> @ <room> : <blurb>';
+            return list.map((n) => `${n.name} @ ${n.room}${n.card ? ` (card: ${n.card})` : ''} — ${n.blurb}`).join('\n');
+        },
+    }));
+
+    SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         name: 'if-map',
         helpString: 'Show a tree of the rooms the narrator has grown this chat.',
         returns: ARGUMENT_TYPE.STRING,
@@ -441,9 +513,16 @@ jQuery(async () => {
     });
     registerSlashCommands();
     eventSource.on(event_types.CHAT_CHANGED, ensureStoryLoaded);
-    eventSource.on(event_types.GENERATION_ENDED, () => {
+    eventSource.on(event_types.GENERATION_ENDED, async () => {
         renderHud();
         ensureExitsExtracted();
+        // A card-bound NPC the player addressed speaks AFTER the narrator's turn.
+        const st = readState(getContext().chatMetadata);
+        const pend = st?.pendingNpcSpeak;
+        if (pend) {
+            st.pendingNpcSpeak = null;
+            try { await buildDeps().onNpcSpeak(pend); } catch (e) { console.error('[ST_IF] npc speak', e); }
+        }
     });
     await ensureStoryLoaded();
     renderRoomPanel();
