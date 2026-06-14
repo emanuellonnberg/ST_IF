@@ -31,6 +31,14 @@ test('presentNpcs filters by room slug (case-insensitive)', () => {
     assert.deepEqual(presentNpcs(l, 'street'), []);
 });
 
+test('presentNpcs matches a manifest slug against the VM display name (spaces/case)', () => {
+    // manifest binds maeve to "commonroom"; the VM reports the room as "Common Room".
+    const l = [{ name: 'maeve', room: 'commonroom', blurb: 'sly' }];
+    assert.deepEqual(presentNpcs(l, 'Common Room').map((n) => n.name), ['maeve']);
+    assert.deepEqual(presentNpcs([{ name: 'tomas', room: 'taproom' }], 'Taproom').map((n) => n.name), ['tomas']);
+    assert.deepEqual(presentNpcs(l, 'Taproom'), []);   // different room → not present
+});
+
 test('npcCanonLine lists present NPCs, or empty', () => {
     assert.equal(npcCanonLine([]), '');
     assert.equal(

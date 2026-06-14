@@ -32,10 +32,14 @@ export function listNpcs(list) {
     return [...(list ?? [])];
 }
 
-/** NPCs whose room matches the player's current room (case-insensitive). */
+/** Normalize a room name/slug for matching: lowercase, drop non-alphanumerics, so
+ *  a manifest slug ("commonroom") matches the VM's display name ("Common Room"). */
+const roomKey = (s) => String(s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+/** NPCs whose room matches the player's current room (slug/display-name-insensitive). */
 export function presentNpcs(list, roomSlug) {
-    const r = String(roomSlug ?? '').toLowerCase();
-    return (list ?? []).filter((n) => String(n.room ?? '').toLowerCase() === r);
+    const r = roomKey(roomSlug);
+    return (list ?? []).filter((n) => roomKey(n.room) === r);
 }
 
 /** Canon line naming the NPCs present in the room, or '' if none. */
