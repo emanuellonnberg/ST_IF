@@ -568,6 +568,23 @@ test('effects: xgrant/xtake adjust the tavern gold (clamped); xflag round-trips'
     assert.equal(vm.query('xflagq rats_done').trim(), '1'); // set, by text (not in dictionary)
 });
 
+test('tavern: "light lantern" lights it (translator emits light/use, never switch-on)', async () => {
+    const vm = new IFVM(); await vm.load(tavern);
+    vm.step('east');                                        // Common Room -> Taproom
+    vm.step('take lantern');
+    // The prose translator emits "light lantern" for switch-on intent. 'light' is
+    // a library Burn synonym; the world's BurnSub override routes it to SwitchOn.
+    const lit = vm.step('light lantern');
+    assert.match(lit, /flares to life/i);                  // not "dangerous act would achieve little"
+    assert.match(vm.query('examine lantern'), /switched on/i); // ground truth: on attribute set
+    const cellar = vm.step('down');                        // dark room, lit only by carried lantern
+    assert.match(cellar, /Cellar/);
+    assert.doesNotMatch(cellar, /pitch dark/i);            // visible because the lantern is lit
+    vm.step('extinguish lantern');
+    assert.match(vm.step('look'), /pitch dark/i);          // off -> dark again
+    assert.match(vm.step('use lantern'), /flares to life/i); // "use X" also switches a switchable on
+});
+
 // --- Expandable authored world (apartment frontier) ------------------------
 const apartmentExp = new Uint8Array(readFileSync(new URL('../worlds/apartment-expanse.z5', import.meta.url)));
 

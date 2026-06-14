@@ -3,6 +3,7 @@
 ! (place, presence, coin, contracts); the LLM weaves narrative around it.
 Constant Story "THE ADVENTURER'S REST";
 Constant Headline "^A classic-RPG tavern hub for ST_IF.^";
+Replace BurnSub;          ! redefined below: light/burn a switchable -> SwitchOn
 Include "Parser";
 Include "VerbLib";
 
@@ -120,8 +121,8 @@ Object lantern "brass lantern"
   with name 'lantern' 'lamp' 'light' 'brass',
        description "A brass lantern that throws a steady light when lit.",
        before [;
-         SwitchOn: give self light; "The lantern flares to life.";
-         SwitchOff: give self ~light; "You shutter the lantern.";
+         SwitchOn: give self on light; "The lantern flares to life.";
+         SwitchOff: give self ~on ~light; "You shutter the lantern.";
        ],
   has switchable;
 
@@ -601,3 +602,18 @@ Verb 'request'
 Verb 'tip'
    * noun  -> Tip
    *       -> Tip;
+
+! ---- Natural light verbs -----------------------------------------------------
+! The prose->command translator emits "light X" for switch-on intents (never
+! "switch on" / "turn on"), so the lantern never lit. 'light' is a library
+! synonym for Burn, so redirect Burn on a switchable object to SwitchOn; also
+! accept "use"/"activate" -> SwitchOn and "extinguish"/"douse"/... -> SwitchOff.
+[ BurnSub;
+    if (noun has switchable) { <SwitchOn noun>; rtrue; }   ! light/burn lamp -> on
+    if (noun has animate) return L__M(##Burn, 2, noun);
+    L__M(##Burn, 1, noun);
+];
+Verb 'extinguish' 'douse' 'snuff' 'unlight' 'quench'
+   * noun                     -> SwitchOff;
+Verb 'use' 'activate'
+   * noun                     -> SwitchOn;
