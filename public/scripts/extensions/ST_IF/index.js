@@ -1,6 +1,6 @@
 import {
     setExtensionPrompt, extension_prompt_types, extension_prompt_roles,
-    generateQuietPrompt, eventSource, event_types, saveSettingsDebounced,
+    generateQuietPrompt, eventSource, event_types, saveSettingsDebounced, getRequestHeaders,
 } from '../../../script.js';
 import { getContext, renderExtensionTemplateAsync, saveMetadataDebounced } from '../../extensions.js';
 import { SlashCommandParser } from '../../slash-commands/SlashCommandParser.js';
@@ -19,6 +19,7 @@ import { formatMap, planReplay, upconvertV1 } from './worldmap.js';
 import { addNpc, removeNpc, bindCard } from './npc.js';
 import { parseEffectProposal, validateEffect, effectVerb } from './effects.js';
 import { addQuest, removeQuest, listQuests, resolveCompletion } from './quest.js';
+import { parseManifest, planSeed } from './scenario.js';
 
 const vm = new IFVM();
 const companionVM = new IFVM();
@@ -376,6 +377,63 @@ async function importWorld(payload) {
     return { count: graph.rooms.length, partial };
 }
 
+const WORLDS_URL = '/scripts/extensions/ST_IF/worlds/';
+
+/** Import a shipped card PNG (with embedded V2 data) into the character list. */
+async function importCardPng(file) {
+    const ctx = getContext();
+    const headers = (typeof getRequestHeaders === 'function') ? getRequestHeaders() : {};
+    const csrf = headers['X-CSRF-Token'] || headers['x-csrf-token'];
+    const blob = await (await fetch(`${WORLDS_URL}${file}`)).blob();
+    const fd = new FormData();
+    fd.append('avatar', blob, file.split('/').pop());
+    fd.append('file_type', 'png');
+    await fetch('/api/characters/import', { method: 'POST', headers: csrf ? { 'X-CSRF-Token': csrf } : {}, body: fd });
+    if (typeof ctx.getCharacters === 'function') await ctx.getCharacters();   // refresh the list
+}
+
+/**
+ * Seed a bundled world's NPCs/quests/cards/effectSafety from its sidecar manifest
+ * (worlds/<basename>.world.json). Idempotent: only seeds a fresh chat unless forced.
+ */
+async function seedScenario(worldFile, { force = false } = {}) {
+    if (!worldFile) return;
+    const base = String(worldFile).replace(/\.[^.]+$/, '');
+    let manifest;
+    try {
+        const res = await fetch(`${WORLDS_URL}${base}.world.json`);
+        if (!res.ok) return;                                  // no manifest → behave as before
+        manifest = parseManifest(await res.text());
+    } catch { return; }
+    if (!manifest) return;
+    const md = getContext().chatMetadata;
+    if (!readState(md)) return;
+    if (!force && (getNpcs(md).length || getQuests(md).length)) return;   // never clobber
+    if (force) { setNpcs(md, []); setQuests(md, []); }
+
+    const names = () => (getContext().characters || []).map((c) => c.name);
+    const plan = planSeed(manifest, names());
+    for (const card of plan.cardsToImport) {
+        try { await importCardPng(card.file); } catch (e) { console.warn('[ST_IF] card import failed', card, e); }
+    }
+    // Re-derive missing after import (a failed import leaves the card absent).
+    const have = new Set(names());
+    const missing = plan.npcs.filter((n) => n.card && !have.has(n.card)).map((n) => ({ npc: n.name, card: n.card }));
+
+    setNpcs(md, plan.npcs);
+    setQuests(md, plan.quests);
+    if (plan.effectSafety) { getSettings().effectSafety = plan.effectSafety; saveSettingsDebounced(); }
+    readState(md).scenarioFile = worldFile;
+    saveMetadataDebounced();
+    renderHud();
+
+    let msg = `*(scenario)* Loaded: ${plan.npcs.length} NPC(s), ${plan.quests.length} quest(s)${plan.effectSafety ? `, NPC effects: ${plan.effectSafety}` : ''}.`;
+    if (missing.length) {
+        msg += '\n' + missing.map((m) => `⚠ NPC "${m.npc}" expects card "${m.card}" (not found) — bind a replacement: /if-npc bind ${m.npc} <your card>`).join('\n');
+    }
+    postComment(msg);
+}
+
 /** Dev-mode: surface the opening scene as a toast when "Show raw game output" is on. */
 function showIntroIfDebug() {
     if (getSettings()?.showRawOutput && vm.loaded) {
@@ -542,6 +600,26 @@ function registerSlashCommands() {
     }));
 
     SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+        name: 'if-scenario',
+        helpString: 'Scenario bundle: \'reload\' re-seeds NPCs/quests from the world manifest (resets them); \'list\' shows what\'s loaded.',
+        unnamedArgumentList: [new SlashCommandArgument('reload | list', [ARGUMENT_TYPE.STRING], false, false, '')],
+        returns: ARGUMENT_TYPE.STRING,
+        callback: async (_args, value) => {
+            const md = getContext().chatMetadata;
+            const st = readState(md);
+            if (!st) return 'No story loaded.';
+            const sub = (String(value ?? '').trim().split(/\s+/)[0] || 'list').toLowerCase();
+            if (sub === 'reload') {
+                if (!st.scenarioFile) return 'No bundled scenario to reload (load one from the picker).';
+                await seedScenario(st.scenarioFile, { force: true });
+                return `Reloaded scenario from ${st.scenarioFile}.`;
+            }
+            const npcs = getNpcs(md), quests = getQuests(md);
+            return `Scenario: ${st.scenarioFile || '(none)'}\nNPCs: ${npcs.map((n) => n.name).join(', ') || '(none)'}\nQuests: ${quests.map((q) => `${q.id}[${q.status}]`).join(', ') || '(none)'}`;
+        },
+    }));
+
+    SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         name: 'if-map',
         helpString: 'Show a tree of the rooms the narrator has grown this chat.',
         returns: ARGUMENT_TYPE.STRING,
@@ -590,6 +668,7 @@ jQuery(async () => {
             try {
                 const bytes = new Uint8Array(await (await fetch(`/scripts/extensions/ST_IF/worlds/${file}`)).arrayBuffer());
                 await applyStoryBytes(label, bytes, id);
+                await seedScenario(file);                 // auto-seed NPCs/quests/cards from the manifest
                 toastr.success(`Loaded ${label}`, 'ST_IF');
             } catch (e) {
                 console.error('[ST_IF] world load failed', e);

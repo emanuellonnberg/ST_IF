@@ -1,0 +1,14 @@
+{
+    "cards": [
+        { "name": "Tomas the Barkeep", "file": "cards/tomas.png" },
+        { "name": "Old Maeve", "file": "cards/maeve.png" }
+    ],
+    "npcs": [
+        { "name": "tomas", "room": "taproom", "blurb": "the gruff keeper of the bar", "card": "Tomas the Barkeep" },
+        { "name": "maeve", "room": "commonroom", "blurb": "a sly old regular who trades in rumours", "card": "Old Maeve" }
+    ],
+    "quests": [
+        { "id": "rats", "giver": "tomas", "goal": "clear the cellar rats", "reward": { "effect": "grant", "amount": 10 }, "condition": "rats_done" }
+    ],
+    "effectSafety": "safe"
+}
