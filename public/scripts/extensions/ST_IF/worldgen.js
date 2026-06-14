@@ -22,7 +22,9 @@ export function parseRoomJson(text) {
  * Caps default to the expanse.h buffer sizes minus one (length byte).
  */
 export function sanitizeRoom(raw, { nameMax = 31, descMax = 199, objDescMax = 119, maxObjects = 8 } = {}) {
-    const name = ascii(raw?.name).slice(0, nameMax) || 'somewhere';
+    // Room names are a single lowercase token: the VM stores one word and they are the
+    // identity key for xlinkn, so collapse multi-word names rather than truncate them.
+    const name = ascii(raw?.name).toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, nameMax) || 'somewhere';
     const description = ascii(raw?.description).slice(0, descMax) || 'An undefined space.';
     const objects = Array.isArray(raw?.objects)
         ? raw.objects.slice(0, maxObjects).map((o) => ({
@@ -59,6 +61,44 @@ export function blockedMove(cmd, output) {
     if (!DIRS.has(c)) return null;
     if (!BLOCKED.test(String(output ?? ''))) return null;
     return DIR_FULL[c] ?? c;
+}
+
+// Grid geometry: a step in each compass direction as a coordinate delta.
+const CELL = {
+    north: { dx: 0, dy: 1, dz: 0 }, south: { dx: 0, dy: -1, dz: 0 },
+    east: { dx: 1, dy: 0, dz: 0 }, west: { dx: -1, dy: 0, dz: 0 },
+    up: { dx: 0, dy: 0, dz: 1 }, down: { dx: 0, dy: 0, dz: -1 },
+};
+const fullDir = (dir) => DIR_FULL[String(dir).toLowerCase()] ?? String(dir).toLowerCase();
+
+export function cellDelta(dir) {
+    return CELL[fullDir(dir)] ?? null;
+}
+
+export function addCell(cell, dir) {
+    const d = cellDelta(dir);
+    if (!d) return cell;
+    return { x: (cell?.x ?? 0) + d.dx, y: (cell?.y ?? 0) + d.dy, z: (cell?.z ?? 0) + d.dz };
+}
+
+/**
+ * Keep only the LLM-named connections that are safe to apply: a real compass dir not
+ * already taken, and `to` an exact existing room name (drops hallucinations + dup dirs).
+ */
+export function validateConnections(conns, existingNames, takenDirs = []) {
+    if (!Array.isArray(conns)) return [];
+    const exist = new Set(existingNames ?? []);
+    const taken = new Set((takenDirs ?? []).map(fullDir));
+    const used = new Set();
+    const out = [];
+    for (const c of conns) {
+        const dir = fullDir(c?.dir);
+        const to = String(c?.to ?? '');
+        if (!CELL[dir] || !exist.has(to) || taken.has(dir) || used.has(dir)) continue;
+        used.add(dir);
+        out.push({ dir, to });
+    }
+    return out;
 }
 
 const NORM = { ...DIR_FULL };

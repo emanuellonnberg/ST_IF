@@ -530,19 +530,46 @@ test('expanse: an unmaterialised direction stays a normal blocked move', async (
     assert.match(vm.step('east'), /can't go that way/i);           // graceful: no room, no crash
 });
 
-test('expanse: planReplay rebuilds a branching world from records (import round-trip)', async () => {
-    const records = [
-        { from: 'Origin', dir: 'north', name: 'attic', description: 'A dusty attic.', objects: [{ name: 'trunk', description: 'old', takeable: true }] },
-        { from: 'attic', dir: 'east', name: 'balcony', description: 'A balcony.', objects: [] },
-        { from: 'Origin', dir: 'down', name: 'cellar', description: 'A cellar.', objects: [] },
-    ];
+test('expanse: a square path links back to Origin (grid loop)', async () => {
     const vm = new IFVM(); await vm.load(expanse);
-    vm.applyWorldEdits(planReplay(records));                        // replay leaves the player at Origin
-    assert.match(vm.step('north'), /attic/i);
-    assert.match(vm.step('examine trunk'), /old/i);                // object replayed + parse_name
-    assert.match(vm.step('east'), /balcony/i);                    // nested room
-    assert.match(vm.step('west'), /attic/i);                      // back-link
-    assert.match(vm.step('south'), /Origin/i);
-    assert.match(vm.step('down'), /cellar/i);                     // second branch
-    assert.match(vm.step('up'), /Origin/i);
+    // Build a ring: Origin -N-> a -E-> b -S-> c, then close c -W-> Origin.
+    vm.applyWorldEdits([
+        'xnew a', 'xnew b', 'xnew c',
+        'xlinkn origin north a', 'xlinkn a east b', 'xlinkn b south c', 'xlinkn c west origin',
+    ]);
+    assert.match(vm.step('north'), /\ba\b/i);
+    assert.match(vm.step('east'), /\bb\b/i);
+    assert.match(vm.step('south'), /\bc\b/i);
+    assert.match(vm.step('west'), /Origin/i);     // closed the loop, back home
+});
+
+test('expanse: an LLM-style cross-link connects two rooms both ways', async () => {
+    const vm = new IFVM(); await vm.load(expanse);
+    vm.applyWorldEdits(['xnew vault', 'xnew tunnel', 'xlinkn origin north vault', 'xlinkn vault down tunnel']);
+    assert.match(vm.step('north'), /vault/i);
+    assert.match(vm.step('down'), /tunnel/i);
+    assert.match(vm.step('up'), /vault/i);        // both-ways
+});
+
+test('expanse: planReplay rebuilds a looped graph (import round-trip)', async () => {
+    const graph = {
+        rooms: [
+            { name: 'a', x: 0, y: 1, z: 0, description: 'room a', objects: [{ name: 'key', description: 'a brass key', takeable: true }] },
+            { name: 'b', x: 1, y: 1, z: 0, description: 'room b', objects: [] },
+            { name: 'c', x: 1, y: 0, z: 0, description: 'room c', objects: [] },
+        ],
+        edges: [
+            { from: 'Origin', dir: 'north', to: 'a' },
+            { from: 'a', dir: 'east', to: 'b' },
+            { from: 'b', dir: 'south', to: 'c' },
+            { from: 'c', dir: 'west', to: 'Origin' },   // the loop
+        ],
+    };
+    const vm = new IFVM(); await vm.load(expanse);
+    vm.applyWorldEdits(planReplay(graph));            // xnew/xlinkn leave the player at Origin
+    assert.match(vm.step('north'), /\ba\b/i);
+    assert.match(vm.step('examine key'), /brass key/i);   // object + parse_name
+    assert.match(vm.step('east'), /\bb\b/i);
+    assert.match(vm.step('south'), /\bc\b/i);
+    assert.match(vm.step('west'), /Origin/i);             // loop edge reconstructed
 });

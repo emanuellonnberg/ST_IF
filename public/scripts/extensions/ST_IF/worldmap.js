@@ -1,6 +1,7 @@
-// worldmap.js — pure helpers for the grown-room map: render a tree, plan a replay.
-// A record is { from, dir, name, description, objects }. The root room is "Origin".
-import { buildMetaCommands } from './worldgen.js';
+// worldmap.js — pure helpers for the grown-room graph: render a map, plan a replay,
+// upconvert a v1 (tree) export. A graph is { rooms:[{name,x,y,z,description,objects}],
+// edges:[{from,dir,to}] }. The root room is "Origin" at (0,0,0).
+import { buildMetaCommands, addCell } from './worldgen.js';
 
 const REVERSE = { north: 'south', south: 'north', east: 'west', west: 'east', up: 'down', down: 'up' };
 
@@ -8,56 +9,62 @@ export function reverseDir(dir) {
     return REVERSE[String(dir).toLowerCase()] ?? dir;
 }
 
-/** Dir sequence from Origin to `target` (empty for Origin, null if unreachable). */
-export function pathToRoom(records, target) {
-    if (target === 'Origin') return [];
-    const byName = {};
-    for (const r of records) byName[r.name] = r;     // last wins on duplicate names
-    const path = [];
-    const seen = new Set();
-    let cur = target;
-    while (cur !== 'Origin') {
-        const r = byName[cur];
-        if (!r || seen.has(cur)) return null;        // unknown room or a cycle
-        seen.add(cur);
-        path.push(r.dir);
-        cur = r.from;
-    }
-    return path.reverse();
-}
+/** Indented spine tree (DFS from Origin) plus a "loops:" section for non-spine edges. */
+export function formatMap(graph) {
+    const { rooms = [], edges = [] } = graph ?? {};
+    void rooms;
+    const adj = {};
+    const push = (a, dir, b) => (adj[a] ??= []).push({ dir, to: b });
+    for (const e of edges) { push(e.from, e.dir, e.to); push(e.to, reverseDir(e.dir), e.from); }
 
-/** Multi-line indented tree of the grown world, rooted at Origin. */
-export function formatMap(records) {
-    const byParent = {};
-    for (const r of records) (byParent[r.from] ??= []).push({ dir: r.dir, name: r.name });
     const lines = ['Origin'];
-    const seen = new Set();
-    const walk = (room, indent) => {
-        if (seen.has(room)) return;                  // guard duplicate-name cycles
-        seen.add(room);
-        for (const c of byParent[room] ?? []) {
-            lines.push('  '.repeat(indent) + `${c.dir} → ${c.name}`);
-            walk(c.name, indent + 1);
+    const visited = new Set(['Origin']);
+    const spine = new Set();                       // unordered "a|b" pairs that form the tree
+    const dfs = (room, depth) => {
+        for (const { dir, to } of adj[room] ?? []) {
+            if (visited.has(to)) continue;
+            visited.add(to);
+            spine.add([room, to].sort().join('|'));
+            lines.push('  '.repeat(depth) + `${dir} → ${to}`);
+            dfs(to, depth + 1);
         }
     };
-    walk('Origin', 0);
+    dfs('Origin', 0);
+
+    const loops = [];
+    const seen = new Set();
+    for (const e of edges) {
+        const key = [e.from, e.to].sort().join('|');
+        if (spine.has(key) || seen.has(key)) continue;
+        seen.add(key);
+        loops.push(`  ${e.from} ${e.dir} → ${e.to}`);
+    }
+    if (loops.length) lines.push('loops:', ...loops);
     return lines.join('\n');
 }
 
-/**
- * Ordered VM commands that rebuild the world from a fresh seed: for each record,
- * navigate the cursor to its `from` (up to Origin via reverse dirs, then down),
- * then materialise it. Records are in creation order, so every `from` already exists.
- */
-export function planReplay(records) {
+/** Navigation-free replay: create every room, then link every edge. */
+export function planReplay(graph) {
+    const { rooms = [], edges = [] } = graph ?? {};
     const cmds = [];
-    let cursor = 'Origin';
-    for (const rec of records) {
-        const up = (pathToRoom(records, cursor) ?? []).slice().reverse().map(reverseDir);
-        const down = pathToRoom(records, rec.from) ?? [];
-        cmds.push(...up, ...down);                    // navigate cursor -> rec.from
-        cmds.push(...buildMetaCommands(rec.dir, rec));
-        cursor = rec.from;
+    for (const r of rooms) {
+        cmds.push(`xnew ${r.name}`);
+        cmds.push(...buildMetaCommands(null, r).slice(1));   // reuse xdesc/xobj/xodesc lines (drop the xroom line)
     }
+    for (const e of edges) cmds.push(`xlinkn ${e.from} ${e.dir} ${e.to}`);
     return cmds;
+}
+
+/** Upconvert a v1 (tree) export — [{from,dir,name,description,objects}] — into a graph. */
+export function upconvertV1(records) {
+    const rooms = [];
+    const edges = [];
+    const cellByName = { Origin: { x: 0, y: 0, z: 0 } };
+    for (const rec of records ?? []) {
+        const cell = addCell(cellByName[rec.from] ?? { x: 0, y: 0, z: 0 }, rec.dir);
+        cellByName[rec.name] = cell;
+        rooms.push({ name: rec.name, x: cell.x, y: cell.y, z: cell.z, description: rec.description, objects: rec.objects ?? [] });
+        edges.push({ from: rec.from, dir: rec.dir, to: rec.name });
+    }
+    return { rooms, edges };
 }
