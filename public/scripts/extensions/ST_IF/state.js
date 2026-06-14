@@ -12,6 +12,7 @@ export function initState(metadata, storyId, snapshot) {
         storyId, snapshot, summary: null, history: [],
         companion: { snapshot, summary: null, followQueue: [] },
         together: true,
+        grownRooms: [],
     };
     return metadata[KEY];
 }
@@ -131,6 +132,19 @@ export function setExitsForRoom(metadata, room, exits, desc) {
 
 export function getEdgesForRoom(metadata, room) {
     return metadata[KEY]?.mapEdges?.[room] ?? {};
+}
+
+/** Rooms the narrator has grown at runtime, in creation order (for map/export). */
+export function getGrownRooms(metadata) {
+    return metadata[KEY]?.grownRooms ?? [];
+}
+
+/** Append a grown-room record: { from, dir, name, description, objects }. */
+export function recordGrownRoom(metadata, rec) {
+    const s = metadata[KEY];
+    if (!s) throw new Error('ST_IF state not initialized');
+    s.grownRooms = s.grownRooms ?? [];
+    s.grownRooms.push(rec);
 }
 
 export function recordMapEdge(metadata, fromRoom, dir, toRoom) {

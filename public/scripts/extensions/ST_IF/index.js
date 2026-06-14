@@ -11,10 +11,11 @@ import { IFVM } from './vm.js';
 import { translate } from './translator.js';
 import { decideMove, decideAgency, decideUse } from './companion.js';
 import { runTurn } from './turn.js';
-import { readState, initState, getActiveSnapshot, rewindTo, KEY, setCompanion, getCompanionSnapshot, getRoomDescription, setRoomDescription, getInventoryText, getExitsForRoom, setExitsForRoom, getEdgesForRoom, readTogether } from './state.js';
+import { readState, initState, getActiveSnapshot, rewindTo, KEY, setCompanion, getCompanionSnapshot, getRoomDescription, setRoomDescription, getInventoryText, getExitsForRoom, setExitsForRoom, getEdgesForRoom, readTogether, getGrownRooms, recordGrownRoom } from './state.js';
 import { loadSettings, getSettings, wireSettingsUI, base64ToBytes, bytesToBase64 } from './settings.js';
 import { stripReasoning } from './clean.js';
 import { extractExits, mergeExits, formatExitsLine } from './exits.js';
+import { formatMap, planReplay, pathToRoom, reverseDir } from './worldmap.js';
 
 const vm = new IFVM();
 const companionVM = new IFVM();
@@ -202,6 +203,54 @@ async function applyStoryBytes(name, bytes) {
     $('#st_if_story_name').text(name);
 }
 
+/** Trigger a browser download of `text` as `filename`. */
+function downloadText(filename, text) {
+    const blob = new Blob([text], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+}
+
+/** Export the current chat's grown world as a downloadable JSON file. */
+function exportWorld() {
+    const ctx = getContext();
+    const rooms = getGrownRooms(ctx.chatMetadata);
+    if (!rooms.length) { toastr.info('No grown rooms to export yet.', 'ST_IF'); return; }
+    const payload = { format: 'st_if_world', version: 1, story: 'expanse', rooms };
+    const safe = String(getSettings().storyName || 'expanse').replace(/[^\w.-]+/g, '_');
+    downloadText(`world-${safe}.json`, JSON.stringify(payload, null, 2));
+    toastr.success(`Exported ${rooms.length} room(s).`, 'ST_IF');
+}
+
+/** Rebuild a shared world: fresh expanse + replay the room records into it. */
+async function importWorld(payload) {
+    if (!payload || payload.format !== 'st_if_world' || payload.story !== 'expanse' || !Array.isArray(payload.rooms)) {
+        throw new Error('Not a valid ST_IF expanse world file.');
+    }
+    const rooms = payload.rooms.filter((r) => r && typeof r.name === 'string' && typeof r.from === 'string' && typeof r.dir === 'string');
+    const bytes = new Uint8Array(await (await fetch('/scripts/extensions/ST_IF/worlds/expanse.z5')).arrayBuffer());
+    await applyStoryBytes('Expanse (imported)', bytes);   // fresh seed + reset state
+    const editOut = vm.applyWorldEdits(planReplay(rooms));
+    const partial = /no-free-room/i.test(editOut);
+    // Return the player to Origin (replay leaves the cursor at the last parent room).
+    const lastFrom = rooms.length ? rooms[rooms.length - 1].from : 'Origin';
+    const back = (pathToRoom(rooms, lastFrom) ?? []).slice().reverse().map(reverseDir);
+    if (back.length) vm.applyWorldEdits(back);
+    // Persist the rebuilt world + re-seed the records so /if-map and re-export work.
+    const ctx = getContext();
+    const st = readState(ctx.chatMetadata);
+    st.snapshot = vm.save();
+    st.summary = vm.getStatus();
+    setRoomDescription(ctx.chatMetadata, vm.query ? vm.query('look') : '');
+    for (const r of rooms) recordGrownRoom(ctx.chatMetadata, r);
+    setCompanion(ctx.chatMetadata, { snapshot: vm.save(), summary: vm.getStatus() });
+    saveMetadataDebounced();
+    renderRoomPanel(); renderHud();
+    return { count: rooms.length, partial };
+}
+
 /** Dev-mode: surface the opening scene as a toast when "Show raw game output" is on. */
 function showIntroIfDebug() {
     if (getSettings()?.showRawOutput && vm.loaded) {
@@ -297,6 +346,17 @@ function registerSlashCommands() {
     }));
 
     SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+        name: 'if-map',
+        helpString: 'Show a tree of the rooms the narrator has grown this chat.',
+        returns: ARGUMENT_TYPE.STRING,
+        callback: async () => {
+            const map = formatMap(getGrownRooms(getContext().chatMetadata));
+            postComment('*(map)*\n```\n' + map + '\n```');
+            return 'Map posted.';
+        },
+    }));
+
+    SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         name: 'if-rewind',
         helpString: 'Rewind the IF game to before the action at the given message index.',
         unnamedArgumentList: [new SlashCommandArgument('message index', [ARGUMENT_TYPE.NUMBER], true, false, '')],
@@ -341,6 +401,26 @@ jQuery(async () => {
     } catch (e) {
         console.warn('[ST_IF] no bundled worlds manifest', e);
     }
+    $('#st_if_world_export').on('click', () => exportWorld());
+    $('#st_if_world_import').off('click.st_if').on('click.st_if', () => {
+        const el = document.getElementById('st_if_world_import_file');
+        if (el) el.click();
+    });
+    $('#st_if_world_import_file').off('change.st_if').on('change.st_if', async function () {
+        const file = this.files?.[0];
+        if (!file) return;
+        try {
+            const payload = JSON.parse(await file.text());
+            const { count, partial } = await importWorld(payload);
+            if (partial) toastr.warning(`Imported ${count} room(s); pool filled before the rest.`, 'ST_IF');
+            else toastr.success(`Imported a world of ${count} room(s).`, 'ST_IF');
+        } catch (err) {
+            console.error('[ST_IF] world import failed', err);
+            toastr.error(String(err?.message || err), 'ST_IF: import failed');
+        } finally {
+            this.value = '';
+        }
+    });
     registerSlashCommands();
     eventSource.on(event_types.CHAT_CHANGED, ensureStoryLoaded);
     eventSource.on(event_types.GENERATION_ENDED, () => {

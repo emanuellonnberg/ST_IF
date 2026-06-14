@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { IFVM } from '../vm.js';
 import { sanitizeRoom, buildMetaCommands } from '../worldgen.js';
+import { planReplay } from '../worldmap.js';
 
 const story = new Uint8Array(readFileSync(new URL('./fixtures/Advent.z5', import.meta.url)));
 
@@ -527,4 +528,21 @@ test('expanse: a generated room survives a save/restore round-trip', async () =>
 test('expanse: an unmaterialised direction stays a normal blocked move', async () => {
     const vm = new IFVM(); await vm.load(expanse);
     assert.match(vm.step('east'), /can't go that way/i);           // graceful: no room, no crash
+});
+
+test('expanse: planReplay rebuilds a branching world from records (import round-trip)', async () => {
+    const records = [
+        { from: 'Origin', dir: 'north', name: 'attic', description: 'A dusty attic.', objects: [{ name: 'trunk', description: 'old', takeable: true }] },
+        { from: 'attic', dir: 'east', name: 'balcony', description: 'A balcony.', objects: [] },
+        { from: 'Origin', dir: 'down', name: 'cellar', description: 'A cellar.', objects: [] },
+    ];
+    const vm = new IFVM(); await vm.load(expanse);
+    vm.applyWorldEdits(planReplay(records));                        // replay leaves the player at Origin
+    assert.match(vm.step('north'), /attic/i);
+    assert.match(vm.step('examine trunk'), /old/i);                // object replayed + parse_name
+    assert.match(vm.step('east'), /balcony/i);                    // nested room
+    assert.match(vm.step('west'), /attic/i);                      // back-link
+    assert.match(vm.step('south'), /Origin/i);
+    assert.match(vm.step('down'), /cellar/i);                     // second branch
+    assert.match(vm.step('up'), /Origin/i);
 });
