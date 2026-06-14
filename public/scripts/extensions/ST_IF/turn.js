@@ -1,5 +1,5 @@
 // turn.js — orchestrate one chat turn. Pure: all ST/VM deps injected.
-import { readState, recordTurn, getActiveSnapshot, setCompanion, getCompanionSnapshot, setTogether, readTogether, getFollowQueue, setFollowQueue, setRoomDescription, getRoomDescription, recordMapEdge, setInventoryText, getEdgesForRoom, getExitsForRoom, recordRoom, recordEdge, getGrownRooms, cellOfRoom, roomAtCell } from './state.js';
+import { readState, recordTurn, getActiveSnapshot, setCompanion, getCompanionSnapshot, setTogether, readTogether, getFollowQueue, setFollowQueue, setRoomDescription, getRoomDescription, recordMapEdge, setInventoryText, getEdgesForRoom, getExitsForRoom, recordRoom, recordEdge, getGrownRooms, cellOfRoom, roomAtCell, getAnchors, setAnchor, nextAnchorCell } from './state.js';
 import { dirToRoom } from './exits.js';
 import { translate as translateDefault } from './translator.js';
 import { extractMoves, zone, detectShout, validateAction } from './companion.js';
@@ -7,9 +7,6 @@ import { buildCanonBlock, buildApartCanonBlock } from './canon.js';
 import { compactInventory } from './clean.js';
 import { parseRoomJson, sanitizeRoom, buildMetaCommands, blockedMove, directionSuggested, addCell, validateConnections } from './worldgen.js';
 import { reverseDir } from './worldmap.js';
-
-// xlinkn resolves the token "origin" to the root room; records keep "Origin".
-const slug = (name) => (name === 'Origin' ? 'origin' : name);
 
 const SKIP_TYPES = new Set(['quiet', 'impersonate']);
 
@@ -99,43 +96,49 @@ export async function runTurn(deps, chat, type) {
     if (settings.dynamicWorld && deps.generateRoom && cmds.length && typeof vm.isExpandable === 'function') {
         const lastCmd = cmds[cmds.length - 1];
         const dir = blockedMove(lastCmd, outputs[outputs.length - 1] ?? '');
-        const fromRoom = vm.getStatus().location;
-        // In "guided" mode only grow a direction the room's prose hints at (reusing
-        // the cached exit extraction); "anywhere" grows on any wall.
+        const fromDisplay = vm.getStatus().location;
+        // Growth identity = the room's slug; 'no' means a sealed (authored interior) room.
+        const fromSlug = typeof vm.xCanGrow === 'function' ? vm.xCanGrow() : 'origin';
+        const sealed = !fromSlug || fromSlug === 'no' || /not a verb|don't know/i.test(fromSlug);
+        // In "guided" mode only grow a direction the room's prose hints at.
         const mayGrow = settings.growthMode !== 'guided'
-            || directionSuggested(getExitsForRoom(metadata, fromRoom), dir);
-        if (dir && mayGrow && vm.isExpandable()) {
+            || directionSuggested(getExitsForRoom(metadata, fromDisplay), dir);
+        if (dir && !sealed && mayGrow && vm.isExpandable()) {
             try {
-                const target = addCell(cellOfRoom(metadata, fromRoom) ?? { x: 0, y: 0, z: 0 }, dir);
+                // A frontier needs a coordinate anchor the first time we grow from it.
+                if (fromSlug !== 'origin' && cellOfRoom(metadata, fromSlug) == null) {
+                    setAnchor(metadata, fromSlug, nextAnchorCell(metadata));
+                }
+                const target = addCell(cellOfRoom(metadata, fromSlug) ?? { x: 0, y: 0, z: 0 }, dir);
                 const occupant = roomAtCell(metadata, target);
                 if (occupant) {
                     // GRID AUTO-CONNECT: the neighbour cell already holds a room — link to it
                     // (a loop) instead of generating a new dead-end. No LLM call.
-                    const out = vm.applyWorldEdits([`xlinkn ${slug(fromRoom)} ${dir} ${slug(occupant)}`]);
+                    const out = vm.applyWorldEdits([`xlinkn ${fromSlug} ${dir} ${occupant}`]);
                     if (!/miss/i.test(out)) {
-                        recordEdge(metadata, { from: fromRoom, dir, to: occupant });
+                        recordEdge(metadata, { from: fromSlug, dir, to: occupant });
                         outputs.push(vm.step(dir));
                         playerMoveCmds.push(lastCmd);
-                        recordMapEdge(metadata, fromRoom, dir, vm.getStatus().location);
+                        recordMapEdge(metadata, fromDisplay, dir, vm.getStatus().location);
                     }
                 } else {
                     // GENERATE a new room at the empty cell.
-                    const existing = ['Origin', ...getGrownRooms(metadata).map((r) => r.name)];
+                    const existing = ['origin', ...Object.keys(getAnchors(metadata)), ...getGrownRooms(metadata).map((r) => r.name)];
                     const raw = await deps.generateRoom(dir, vm.getStatus(), player.text, existing);
                     const parsed = parseRoomJson(raw) ?? {};
                     const room = sanitizeRoom(parsed);
                     const editOut = vm.applyWorldEdits(buildMetaCommands(dir, room));
                     if (!/no-free-room|no-room/i.test(editOut)) {
                         recordRoom(metadata, { name: room.name, x: target.x, y: target.y, z: target.z, description: room.description, objects: room.objects });
-                        recordEdge(metadata, { from: fromRoom, dir, to: room.name });
+                        recordEdge(metadata, { from: fromSlug, dir, to: room.name });
                         // LLM-NAMED LINKS: connect the new room to existing rooms it declared.
                         for (const c of validateConnections(parsed.connections, existing, [reverseDir(dir)])) {
-                            const lo = vm.applyWorldEdits([`xlinkn ${room.name} ${c.dir} ${slug(c.to)}`]);
+                            const lo = vm.applyWorldEdits([`xlinkn ${room.name} ${c.dir} ${c.to}`]);
                             if (!/miss/i.test(lo)) recordEdge(metadata, { from: room.name, dir: c.dir, to: c.to });
                         }
                         outputs.push(vm.step(dir));            // re-issue: arrival is the new canon
                         playerMoveCmds.push(lastCmd);
-                        recordMapEdge(metadata, fromRoom, dir, vm.getStatus().location);
+                        recordMapEdge(metadata, fromDisplay, dir, vm.getStatus().location);
                     }
                 }
             } catch (e) {

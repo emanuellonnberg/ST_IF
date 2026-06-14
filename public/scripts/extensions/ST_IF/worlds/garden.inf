@@ -11,6 +11,9 @@ Include "VerbLib";
    move trowel to Greenhouse;
    move lantern to Porch;
    move fountain to Pond;
+#Ifdef MAKE_EXPANDABLE;
+   XP_RegisterFrontier(Lawn, 'lawn');   ! the open lawn is where the world may grow
+#Endif;
    "^A bright afternoon in the garden.^";
 ];
 
@@ -21,7 +24,7 @@ Object Porch "Porch"
 
 Object Lawn "Lawn"
   with description "A wide lawn. A path leads south to the porch and east to a pond.",
-       s_to Porch, e_to Pond,
+       s_to Porch, e_to Pond, n_to 0, w_to 0, u_to 0, d_to 0,   ! extra slots: growable frontier
   has light;
 
 Object Pond "Pond"
@@ -59,4 +62,7 @@ Object fountain "garden fountain"
        ],
   has switchable static;
 
+#Ifdef MAKE_EXPANDABLE;
+Include "expanse.h";
+#Endif;
 Include "Grammar";

@@ -26,6 +26,7 @@ export const defaultSettings = {
     dynamicWorld: false,             // narrator invents rooms on blocked moves (expandable worlds)
     growthMode: 'anywhere',          // anywhere (any wall) | guided (only where the room hints an exit)
     storyName: '',
+    storyId: '',       // bundled-world id (for export/import base matching)
     storyBase64: '',   // the .z5/.z8 bytes, base64
 };
 

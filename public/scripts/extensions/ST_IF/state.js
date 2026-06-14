@@ -12,7 +12,7 @@ export function initState(metadata, storyId, snapshot) {
         storyId, snapshot, summary: null, history: [],
         companion: { snapshot, summary: null, followQueue: [] },
         together: true,
-        grownRooms: { rooms: [], edges: [] },
+        grownRooms: { rooms: [], edges: [], anchors: {} },
     };
     return metadata[KEY];
 }
@@ -134,11 +134,13 @@ export function getEdgesForRoom(metadata, room) {
     return metadata[KEY]?.mapEdges?.[room] ?? {};
 }
 
-/** The grown world as a graph: { rooms:[{name,x,y,z,description,objects}], edges:[{from,dir,to}] }. */
+const ANCHOR_SPAN = 100000;   // frontier clusters sit this far apart on the grid
+
+/** The grown world as a graph: { rooms, edges, anchors:{slug:cell} }. */
 export function getWorldGraph(metadata) {
     const g = metadata[KEY]?.grownRooms;
-    if (g && Array.isArray(g.rooms) && Array.isArray(g.edges)) return g;
-    return { rooms: [], edges: [] };
+    if (g && Array.isArray(g.rooms) && Array.isArray(g.edges)) return { anchors: {}, ...g };
+    return { rooms: [], edges: [], anchors: {} };
 }
 
 /** Just the grown rooms (back-compat for callers that only want the room list). */
@@ -149,7 +151,8 @@ export function getGrownRooms(metadata) {
 function ensureGraph(metadata) {
     const s = metadata[KEY];
     if (!s) throw new Error('ST_IF state not initialized');
-    if (!s.grownRooms || !Array.isArray(s.grownRooms.rooms)) s.grownRooms = { rooms: [], edges: [] };
+    if (!s.grownRooms || !Array.isArray(s.grownRooms.rooms)) s.grownRooms = { rooms: [], edges: [], anchors: {} };
+    if (!s.grownRooms.anchors) s.grownRooms.anchors = {};
     return s.grownRooms;
 }
 
@@ -166,18 +169,40 @@ export function recordEdge(metadata, edge) {
     }
 }
 
-/** Cell of a room by name (Origin = 0,0,0); null if unknown. */
-export function cellOfRoom(metadata, name) {
-    if (name === 'Origin') return { x: 0, y: 0, z: 0 };
-    const r = getWorldGraph(metadata).rooms.find((x) => x.name === name);
-    return r ? { x: r.x, y: r.y, z: r.z } : null;
+/** Frontier anchors: { slug: cell }. */
+export function getAnchors(metadata) {
+    return getWorldGraph(metadata).anchors ?? {};
 }
 
-/** Name of the room occupying a cell ('Origin' for 0,0,0); null if empty. */
+export function setAnchor(metadata, slug, cell) {
+    ensureGraph(metadata).anchors[slug] = cell;
+}
+
+/** Next free cluster anchor, spaced far from existing ones. */
+export function nextAnchorCell(metadata) {
+    const n = Object.keys(getAnchors(metadata)).length;
+    return { x: ANCHOR_SPAN * (n + 1), y: 0, z: 0 };
+}
+
+/** Cell of a room/frontier by slug ('origin' = 0,0,0); null if unknown. */
+export function cellOfRoom(metadata, slug) {
+    if (slug === 'origin' || slug === 'Origin') return { x: 0, y: 0, z: 0 };
+    const g = getWorldGraph(metadata);
+    const r = g.rooms.find((x) => x.name === slug);
+    if (r) return { x: r.x, y: r.y, z: r.z };
+    return g.anchors?.[slug] ?? null;
+}
+
+/** Slug of the room occupying a cell ('origin' for 0,0,0); null if empty. */
 export function roomAtCell(metadata, cell) {
-    if (cell && cell.x === 0 && cell.y === 0 && cell.z === 0) return 'Origin';
-    const r = getWorldGraph(metadata).rooms.find((x) => x.x === cell?.x && x.y === cell?.y && x.z === cell?.z);
-    return r ? r.name : null;
+    if (cell && cell.x === 0 && cell.y === 0 && cell.z === 0) return 'origin';
+    const g = getWorldGraph(metadata);
+    const r = g.rooms.find((x) => x.x === cell?.x && x.y === cell?.y && x.z === cell?.z);
+    if (r) return r.name;
+    for (const [slug, c] of Object.entries(g.anchors ?? {})) {
+        if (c.x === cell?.x && c.y === cell?.y && c.z === cell?.z) return slug;
+    }
+    return null;
 }
 
 export function recordMapEdge(metadata, fromRoom, dir, toRoom) {

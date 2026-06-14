@@ -11,7 +11,7 @@ import { IFVM } from './vm.js';
 import { translate } from './translator.js';
 import { decideMove, decideAgency, decideUse } from './companion.js';
 import { runTurn } from './turn.js';
-import { readState, initState, getActiveSnapshot, rewindTo, KEY, setCompanion, getCompanionSnapshot, getRoomDescription, setRoomDescription, getInventoryText, getExitsForRoom, setExitsForRoom, getEdgesForRoom, readTogether, getWorldGraph, recordRoom, recordEdge } from './state.js';
+import { readState, initState, getActiveSnapshot, rewindTo, KEY, setCompanion, getCompanionSnapshot, getRoomDescription, setRoomDescription, getInventoryText, getExitsForRoom, setExitsForRoom, getEdgesForRoom, readTogether, getWorldGraph, recordRoom, recordEdge, setAnchor } from './state.js';
 import { loadSettings, getSettings, wireSettingsUI, base64ToBytes, bytesToBase64 } from './settings.js';
 import { stripReasoning } from './clean.js';
 import { extractExits, mergeExits, formatExitsLine } from './exits.js';
@@ -185,10 +185,11 @@ function ensureExitsExtracted() {
 }
 
 /** Apply freshly-loaded story bytes: store, (re)seed state, render. Shared by upload + picker. */
-async function applyStoryBytes(name, bytes) {
+async function applyStoryBytes(name, bytes, id) {
     const ctx = getContext();
     const s = getSettings();
     s.storyName = name;
+    s.storyId = id || '';          // base-world id for export/import (bundled worlds only)
     s.storyBase64 = bytesToBase64(bytes);
     saveSettingsDebounced();
     await vm.load(bytes);
@@ -215,29 +216,41 @@ function downloadText(filename, text) {
     URL.revokeObjectURL(url);
 }
 
-/** Export the current chat's grown world as a downloadable JSON file (graph v2). */
+/** Export the current chat's grown world as a downloadable JSON file (graph v3). */
 function exportWorld() {
     const ctx = getContext();
     const graph = getWorldGraph(ctx.chatMetadata);
     if (!graph.rooms.length) { toastr.info('No grown rooms to export yet.', 'ST_IF'); return; }
-    const payload = { format: 'st_if_world', version: 2, story: 'expanse', rooms: graph.rooms, edges: graph.edges };
-    const safe = String(getSettings().storyName || 'expanse').replace(/[^\w.-]+/g, '_');
+    const story = getSettings().storyId || 'expanse';
+    const payload = { format: 'st_if_world', version: 3, story, rooms: graph.rooms, edges: graph.edges, anchors: graph.anchors || {} };
+    const safe = String(getSettings().storyName || story).replace(/[^\w.-]+/g, '_');
     downloadText(`world-${safe}.json`, JSON.stringify(payload, null, 2));
     toastr.success(`Exported ${graph.rooms.length} room(s).`, 'ST_IF');
 }
 
-/** Rebuild a shared world: fresh expanse + replay the graph (rooms + edges) into it. */
+/** Find a bundled world's file by its id from the worlds manifest. */
+async function bundledWorldFile(id) {
+    try {
+        const worlds = await (await fetch('/scripts/extensions/ST_IF/worlds/worlds.json')).json();
+        return worlds.find((w) => w.id === id)?.file ?? null;
+    } catch { return null; }
+}
+
+/** Rebuild a shared world: load its base story, then replay the graph into it. */
 async function importWorld(payload) {
-    if (!payload || payload.format !== 'st_if_world' || payload.story !== 'expanse' || !Array.isArray(payload.rooms)) {
-        throw new Error('Not a valid ST_IF expanse world file.');
+    if (!payload || payload.format !== 'st_if_world' || !Array.isArray(payload.rooms)) {
+        throw new Error('Not a valid ST_IF world file.');
     }
-    // v1 (tree) files upconvert to a graph; v2 already carries rooms + edges.
+    const story = payload.story || 'expanse';
+    // v1 (tree) -> graph; v2 (graph, no anchors) -> add empty anchors; v3 as-is.
     const graph = Array.isArray(payload.edges)
-        ? { rooms: payload.rooms, edges: payload.edges }
-        : upconvertV1(payload.rooms);
-    const bytes = new Uint8Array(await (await fetch('/scripts/extensions/ST_IF/worlds/expanse.z5')).arrayBuffer());
-    await applyStoryBytes('Expanse (imported)', bytes);   // fresh seed + reset state (player at Origin)
-    const editOut = vm.applyWorldEdits(planReplay(graph));  // xnew/xlinkn don't move the player
+        ? { rooms: payload.rooms, edges: payload.edges, anchors: payload.anchors || {} }
+        : { ...upconvertV1(payload.rooms), anchors: {} };
+    const file = story === 'expanse' ? 'expanse.z5' : await bundledWorldFile(story);
+    if (!file) throw new Error(`Unknown base world "${story}" — cannot import.`);
+    const bytes = new Uint8Array(await (await fetch(`/scripts/extensions/ST_IF/worlds/${file}`)).arrayBuffer());
+    await applyStoryBytes(`${story} (imported)`, bytes, story);   // fresh base + reset state
+    const editOut = vm.applyWorldEdits(planReplay(graph));        // xnew/xlinkn don't move the player
     const partial = /no-free-room/i.test(editOut);
     // Persist the rebuilt world + re-seed the graph so /if-map and re-export work.
     const ctx = getContext();
@@ -247,6 +260,7 @@ async function importWorld(payload) {
     setRoomDescription(ctx.chatMetadata, vm.query ? vm.query('look') : '');
     for (const r of graph.rooms) recordRoom(ctx.chatMetadata, r);
     for (const e of graph.edges) recordEdge(ctx.chatMetadata, e);
+    for (const [s, c] of Object.entries(graph.anchors)) setAnchor(ctx.chatMetadata, s, c);
     setCompanion(ctx.chatMetadata, { snapshot: vm.save(), summary: vm.getStatus() });
     saveMetadataDebounced();
     renderRoomPanel(); renderHud();
@@ -386,14 +400,16 @@ jQuery(async () => {
     try {
         const worlds = await (await fetch('/scripts/extensions/ST_IF/worlds/worlds.json')).json();
         const sel = $('#st_if_world_select');
-        for (const w of worlds) sel.append($('<option>').val(w.file).text(w.name));
+        for (const w of worlds) sel.append($('<option>').val(w.file).attr('data-id', w.id || '').text(w.name));
         $('#st_if_world_load').on('click', async () => {
             const file = String(sel.val());
             if (!file) return;
-            const label = sel.find('option:selected').text();
+            const opt = sel.find('option:selected');
+            const label = opt.text();
+            const id = opt.attr('data-id') || '';
             try {
                 const bytes = new Uint8Array(await (await fetch(`/scripts/extensions/ST_IF/worlds/${file}`)).arrayBuffer());
-                await applyStoryBytes(label, bytes);
+                await applyStoryBytes(label, bytes, id);
                 toastr.success(`Loaded ${label}`, 'ST_IF');
             } catch (e) {
                 console.error('[ST_IF] world load failed', e);

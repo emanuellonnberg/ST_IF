@@ -260,6 +260,15 @@ export class IFVM {
         return /xroom ok|no-free-room/i.test(out);
     }
 
+    /**
+     * Growth slug of the current room, or 'no' if it is sealed (and '' / 'not a verb'
+     * on a non-expandable story). Zero net effect (runs via query).
+     */
+    xCanGrow() {
+        if (!this._loaded) return 'no';
+        return String(this.query('xcangrow') ?? '').trim().split('\n')[0].trim();
+    }
+
     /** Serialize full VM state to a base64 string. */
     save() {
         if (!this._loaded) throw new Error('ST_IF: no story loaded');

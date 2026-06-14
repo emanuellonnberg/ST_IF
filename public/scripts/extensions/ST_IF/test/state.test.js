@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readState, initState, recordTurn, rewindTo, getActiveSnapshot, HISTORY_CAP } from '../state.js';
+import { readState, initState, recordTurn, rewindTo, getActiveSnapshot, HISTORY_CAP, recordRoom, recordEdge, cellOfRoom, roomAtCell, setAnchor, nextAnchorCell, getAnchors } from '../state.js';
 
 test('initState seeds an empty game record', () => {
     const md = {};
@@ -9,6 +9,26 @@ test('initState seeds an empty game record', () => {
     assert.equal(s.storyId, 'tiny.z5');
     assert.equal(s.snapshot, 'SNAP0');
     assert.deepEqual(s.history, []);
+});
+
+test('world graph: rooms by cell/slug, anchors spaced far apart', () => {
+    const md = {};
+    initState(md, 'expanse.z5', 'SNAP0');
+    recordRoom(md, { name: 'attic', x: 0, y: 1, z: 0, description: 'd', objects: [] });
+    recordEdge(md, { from: 'origin', dir: 'north', to: 'attic' });
+    // origin + generated room
+    assert.deepEqual(cellOfRoom(md, 'origin'), { x: 0, y: 0, z: 0 });
+    assert.deepEqual(cellOfRoom(md, 'attic'), { x: 0, y: 1, z: 0 });
+    assert.equal(roomAtCell(md, { x: 0, y: 1, z: 0 }), 'attic');
+    assert.equal(roomAtCell(md, { x: 0, y: 0, z: 0 }), 'origin');
+    assert.equal(roomAtCell(md, { x: 5, y: 5, z: 5 }), null);
+    // frontier anchors are far apart and resolvable
+    const a1 = nextAnchorCell(md); setAnchor(md, 'street', a1);
+    const a2 = nextAnchorCell(md); setAnchor(md, 'lawn', a2);
+    assert.ok(Math.abs(a1.x - a2.x) >= 100000, 'clusters spaced far apart');
+    assert.deepEqual(cellOfRoom(md, 'street'), a1);
+    assert.equal(roomAtCell(md, a2), 'lawn');
+    assert.deepEqual(Object.keys(getAnchors(md)), ['street', 'lawn']);
 });
 
 test('recordTurn updates canonical snapshot and appends history keyed by msg index', () => {
