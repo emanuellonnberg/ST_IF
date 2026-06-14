@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { parseManifest, planSeed } from '../scenario.js';
 
 const MANIFEST = {
+    narrator: { name: 'The Storyteller', file: 'cards/narrator.png' },
     cards: [{ name: 'Tomas the Barkeep', file: 'cards/tomas.png' }, { name: 'Old Maeve', file: 'cards/maeve.png' }],
     npcs: [
         { name: 'tomas', room: 'taproom', blurb: 'gruff', card: 'Tomas the Barkeep' },
@@ -21,16 +22,27 @@ test('parseManifest reads JSON, null on junk', () => {
     assert.equal(parseManifest(''), null);
 });
 
-test('planSeed imports only absent cards', () => {
+test('planSeed imports only absent cards (incl. the shipped narrator)', () => {
     const plan = planSeed(MANIFEST, ['Old Maeve']);   // Maeve already present
-    assert.deepEqual(plan.cardsToImport.map((c) => c.name), ['Tomas the Barkeep']);
+    assert.deepEqual(plan.cardsToImport.map((c) => c.name), ['Tomas the Barkeep', 'The Storyteller']);
 });
 
-test('planSeed passes npcs/quests/effectSafety through', () => {
+test('planSeed passes npcs/quests/effectSafety/narrator through', () => {
     const plan = planSeed(MANIFEST, []);
     assert.equal(plan.npcs.length, 4);
     assert.equal(plan.quests[0].id, 'rats');
     assert.equal(plan.effectSafety, 'safe');
+    assert.equal(plan.narrator, 'The Storyteller');
+});
+
+test('planSeed surfaces an already-present narrator without re-importing it', () => {
+    const plan = planSeed(MANIFEST, ['The Storyteller']);
+    assert.equal(plan.narrator, 'The Storyteller');
+    assert.ok(!plan.cardsToImport.some((c) => c.name === 'The Storyteller'));
+});
+
+test('planSeed narrator is null when the manifest omits it', () => {
+    assert.equal(planSeed({ cards: [] }, []).narrator, null);
 });
 
 test('planSeed flags referenced-but-unshipped cards as missing', () => {
@@ -42,5 +54,5 @@ test('planSeed flags referenced-but-unshipped cards as missing', () => {
 
 test('planSeed tolerates an empty manifest', () => {
     const plan = planSeed({}, []);
-    assert.deepEqual(plan, { cardsToImport: [], npcs: [], quests: [], effectSafety: null, missing: [] });
+    assert.deepEqual(plan, { cardsToImport: [], npcs: [], quests: [], effectSafety: null, narrator: null, missing: [] });
 });

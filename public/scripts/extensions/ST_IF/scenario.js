@@ -1,5 +1,6 @@
 // scenario.js — pure: parse a world's manifest + plan what to seed. No ST/VM imports.
-// A manifest: { cards:[{name,file}], npcs:[{name,room,blurb,card?}], quests:[...], effectSafety? }.
+// A manifest: { cards:[{name,file}], npcs:[{name,room,blurb,card?}], quests:[...],
+//              effectSafety?, narrator?:{name,file?} }.
 
 export function parseManifest(text) {
     if (typeof text !== 'string') return null;
@@ -19,8 +20,12 @@ export function planSeed(manifest, existingCardNames) {
     const cards = Array.isArray(manifest?.cards) ? manifest.cards : [];
     const npcs = Array.isArray(manifest?.npcs) ? manifest.npcs : [];
     const quests = Array.isArray(manifest?.quests) ? manifest.quests : [];
+    const narrator = manifest?.narrator?.name ? manifest.narrator : null;
 
-    const cardsToImport = cards.filter((c) => c?.name && !present.has(c.name));
+    // The narrator card is imported like any other (if shipped and absent), and its
+    // name is surfaced so the host can suggest loading it as the active character.
+    const allCards = narrator?.file ? [...cards, narrator] : cards;
+    const cardsToImport = allCards.filter((c) => c?.name && !present.has(c.name));
     const willHave = new Set([...present, ...cardsToImport.map((c) => c.name)]);
 
     // NPCs that name a card which is neither present nor shipped → still missing.
@@ -28,5 +33,5 @@ export function planSeed(manifest, existingCardNames) {
         .filter((n) => n?.card && !willHave.has(n.card))
         .map((n) => ({ npc: n.name, card: n.card }));
 
-    return { cardsToImport, npcs, quests, effectSafety: manifest?.effectSafety ?? null, missing };
+    return { cardsToImport, npcs, quests, effectSafety: manifest?.effectSafety ?? null, narrator: narrator?.name ?? null, missing };
 }

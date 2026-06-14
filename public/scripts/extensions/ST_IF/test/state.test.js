@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readState, initState, recordTurn, rewindTo, getActiveSnapshot, HISTORY_CAP, recordRoom, recordEdge, cellOfRoom, roomAtCell, setAnchor, nextAnchorCell, getAnchors } from '../state.js';
+import { readState, initState, recordTurn, rewindTo, getActiveSnapshot, HISTORY_CAP, recordRoom, recordEdge, cellOfRoom, roomAtCell, setAnchor, nextAnchorCell, getAnchors, getMode, setMode, MODES } from '../state.js';
 
 test('initState seeds an empty game record', () => {
     const md = {};
@@ -9,6 +9,20 @@ test('initState seeds an empty game record', () => {
     assert.equal(s.storyId, 'tiny.z5');
     assert.equal(s.snapshot, 'SNAP0');
     assert.deepEqual(s.history, []);
+    assert.equal(s.mode, 'narrate');                 // default mode
+});
+
+test('getMode/setMode round-trips a valid mode; defaults + rejects junk', () => {
+    const md = {};
+    initState(md, 'tiny.z5', 'SNAP0');
+    assert.equal(getMode(md), 'narrate');
+    setMode(md, 'build');
+    assert.equal(getMode(md), 'build');
+    assert.deepEqual(MODES, ['narrate', 'build']);
+    assert.throws(() => setMode(md, 'gm'), /unknown mode/);
+    // a legacy record without a mode field reads as 'narrate'
+    delete readState(md).mode;
+    assert.equal(getMode(md), 'narrate');
 });
 
 test('world graph: rooms by cell/slug, anchors spaced far apart', () => {

@@ -1,6 +1,21 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildCanonBlock } from '../canon.js';
+import { buildCanonBlock, modeDirective } from '../canon.js';
+
+test('modeDirective: build adds a world-extend directive; narrate adds nothing', () => {
+    assert.match(modeDirective('build'), /World-building mode/);
+    assert.equal(modeDirective('narrate'), '');
+    assert.equal(modeDirective(undefined), '');
+});
+
+test('build mode injects the world-building directive into the canon block', () => {
+    const base = { outputs: ['A tavern.'], status: { location: 'tavern', score: 0, moves: 1 }, ranCommands: true };
+    assert.doesNotMatch(buildCanonBlock({ ...base, mode: 'narrate' }), /World-building mode/);
+    assert.match(buildCanonBlock({ ...base, mode: 'build' }), /World-building mode/);
+    // also on the RP-only (no-command) path when state injection is on
+    const rp = { outputs: [], status: { location: 'tavern', score: 0, moves: 1 }, ranCommands: false, injectStateOnRp: true, mode: 'build' };
+    assert.match(buildCanonBlock(rp), /World-building mode/);
+});
 
 test('quest and effect lines appear only when provided', () => {
     const base = { outputs: ['A tavern.'], status: { location: 'tavern', score: 0, moves: 1 }, ranCommands: true };

@@ -1,4 +1,5 @@
 {
+    "narrator": { "name": "The Storyteller", "file": "cards/narrator.png" },
     "cards": [
         { "name": "Tomas the Barkeep", "file": "cards/tomas.png" },
         { "name": "Old Maeve", "file": "cards/maeve.png" }
