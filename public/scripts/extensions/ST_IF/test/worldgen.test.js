@@ -1,7 +1,7 @@
 // Unit tests for worldgen.js — pure room-JSON sanitiser + meta-command builder.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseRoomJson, sanitizeRoom, buildMetaCommands, blockedMove, directionSuggested } from '../worldgen.js';
+import { parseRoomJson, sanitizeRoom, buildMetaCommands, blockedMove, directionSuggested, cellDelta, addCell, validateConnections } from '../worldgen.js';
 
 test('parseRoomJson extracts JSON embedded in prose / fences', () => {
     const r = parseRoomJson('Sure! ```json\n{"name":"Attic","description":"Dusty.","objects":[]}\n``` done');
@@ -66,6 +66,31 @@ test('blockedMove returns the normalised direction only on a blocked compass mov
     assert.equal(blockedMove('north', 'Kitchen\nA small kitchen.'), null);
     assert.equal(blockedMove('take lamp', 'You can\'t go that way.'), null);
     assert.equal(blockedMove('up', 'There is no way up.'), null); // pattern miss → null
+});
+
+test('sanitizeRoom collapses a multi-word name to one token', () => {
+    assert.equal(sanitizeRoom({ name: 'The Old Library', description: 'd', objects: [] }).name, 'theoldlibrary');
+    assert.equal(sanitizeRoom({ name: 'Attic', description: 'd', objects: [] }).name, 'attic');
+});
+
+test('cellDelta + addCell walk the grid', () => {
+    assert.deepEqual(cellDelta('north'), { dx: 0, dy: 1, dz: 0 });
+    assert.deepEqual(cellDelta('d'), { dx: 0, dy: 0, dz: -1 });   // abbrev
+    assert.deepEqual(addCell({ x: 0, y: 0, z: 0 }, 'north'), { x: 0, y: 1, z: 0 });
+    assert.deepEqual(addCell({ x: 2, y: 1, z: 0 }, 'west'), { x: 1, y: 1, z: 0 });
+});
+
+test('validateConnections keeps only exact-name, free-dir links', () => {
+    const conns = [
+        { dir: 'east', to: 'library' },     // valid
+        { dir: 'north', to: 'ghost' },      // to does not exist → drop
+        { dir: 'east', to: 'attic' },       // dir already used → drop
+        { dir: 'south', to: 'attic' },      // dir already taken → drop
+    ];
+    assert.deepEqual(
+        validateConnections(conns, ['library', 'attic'], ['south']),
+        [{ dir: 'east', to: 'library' }],
+    );
 });
 
 test('directionSuggested matches normalised compass dirs (guided growth)', () => {
