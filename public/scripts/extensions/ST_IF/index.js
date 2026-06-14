@@ -1,6 +1,6 @@
 import {
     setExtensionPrompt, extension_prompt_types, extension_prompt_roles,
-    generateQuietPrompt, eventSource, event_types, saveSettingsDebounced,
+    generateQuietPrompt, eventSource, event_types, saveSettingsDebounced, getRequestHeaders,
 } from '../../../script.js';
 import { getContext, renderExtensionTemplateAsync, saveMetadataDebounced } from '../../extensions.js';
 import { SlashCommandParser } from '../../slash-commands/SlashCommandParser.js';
@@ -11,7 +11,7 @@ import { IFVM } from './vm.js';
 import { translate } from './translator.js';
 import { decideMove, decideAgency, decideUse } from './companion.js';
 import { runTurn } from './turn.js';
-import { readState, initState, getActiveSnapshot, rewindTo, KEY, setCompanion, getCompanionSnapshot, getRoomDescription, setRoomDescription, getInventoryText, getExitsForRoom, setExitsForRoom, getEdgesForRoom, readTogether, getWorldGraph, recordRoom, recordEdge, setAnchor, getNpcs, setNpcs, getQuests, setQuests } from './state.js';
+import { readState, initState, getActiveSnapshot, rewindTo, KEY, setCompanion, getCompanionSnapshot, getRoomDescription, setRoomDescription, getInventoryText, getExitsForRoom, setExitsForRoom, getEdgesForRoom, readTogether, getWorldGraph, recordRoom, recordEdge, setAnchor, getNpcs, setNpcs, getQuests, setQuests, getMode, setMode, MODES } from './state.js';
 import { loadSettings, getSettings, wireSettingsUI, base64ToBytes, bytesToBase64 } from './settings.js';
 import { stripReasoning } from './clean.js';
 import { extractExits, mergeExits, formatExitsLine } from './exits.js';
@@ -19,9 +19,21 @@ import { formatMap, planReplay, upconvertV1 } from './worldmap.js';
 import { addNpc, removeNpc, bindCard } from './npc.js';
 import { parseEffectProposal, validateEffect, effectVerb } from './effects.js';
 import { addQuest, removeQuest, listQuests, resolveCompletion } from './quest.js';
+import { parseManifest, planSeed } from './scenario.js';
 
 const vm = new IFVM();
 const companionVM = new IFVM();
+
+// SillyTavern's `responseLength` override mutates a shared global (`amount_gen`) via a
+// non-reentrant `TempResponseLength`. Two overlapping quiet generations stomp each
+// other's token cap — e.g. a 40-token companion gen truncating a 160-token NPC reply.
+// Serialize every ST_IF quiet generation through one promise chain so none overlap.
+let _genChain = Promise.resolve();
+function qgen(opts) {
+    const run = _genChain.then(() => generateQuietPrompt(opts), () => generateQuietPrompt(opts));
+    _genChain = run.then(() => {}, () => {});   // keep the chain alive past a failed gen
+    return run;
+}
 
 function buildDeps() {
     const ctx = getContext();
@@ -31,7 +43,7 @@ function buildDeps() {
         metadata: ctx.chatMetadata,
         translate: (text, status, strictness) =>
             translate(text, status, strictness, (prompt) =>
-                generateQuietPrompt({ quietPrompt: prompt, responseLength: 80, skipWIAN: true })),
+                qgen({ quietPrompt: prompt, responseLength: 80, skipWIAN: true })),
         setPrompt: (block) => {
             console.debug('[ST_IF] canon injected:\n' + block);
             setExtensionPrompt(KEY, block, extension_prompt_types.IN_CHAT, getSettings().depth, false, extension_prompt_roles.SYSTEM);
@@ -45,7 +57,7 @@ function buildDeps() {
         // World Info out but leaves the character card / scenario in context for theme.
         generateRoom: (dir, status, _playerText, existing = []) => {
             const known = existing.length ? ` Existing rooms you may connect to by exact name: ${existing.join(', ')}.` : '';
-            return generateQuietPrompt({
+            return qgen({
                 quietPrompt: `[The player is at "${status.location}" and moves ${dir} into a place that does not exist yet. Invent a room that fits the current story, setting, and tone. Give it a ONE-WORD name. In the description, name one or two onward exits as concrete ways to go (e.g. "a door leads north") so the world can keep growing.${known} You may optionally connect an exit to an existing room. Respond with ONLY JSON, no prose: {"name":"oneword","description":"2-3 vivid sentences mentioning the exits","objects":[{"name":"one or two word noun","description":"short","takeable":true}],"connections":[{"dir":"east","to":"existingroomname"}]}. Use 0-3 objects (simple lowercase nouns); connections may be empty.]`,
                 responseLength: 220,
                 skipWIAN: true,
@@ -54,13 +66,13 @@ function buildDeps() {
         companionVM,
         companionUse: (playerText, scene, playerCmds) =>
             decideUse(playerText, scene, playerCmds, getSettings().companionInitiative,
-                (prompt) => generateQuietPrompt({ quietPrompt: prompt, responseLength: 40, skipWIAN: true })),
+                (prompt) => qgen({ quietPrompt: prompt, responseLength: 40, skipWIAN: true })),
         companionMove: (playerText, playerRoom, companionRoom) =>
             decideMove(playerText, playerRoom, companionRoom, getSettings().companionBias,
-                (prompt) => generateQuietPrompt({ quietPrompt: prompt, responseLength: 40, skipWIAN: true })),
+                (prompt) => qgen({ quietPrompt: prompt, responseLength: 40, skipWIAN: true })),
         companionDecide: (playerText, playerRoom, companionRoom, playerMoves) =>
             decideAgency(playerText, playerRoom, companionRoom, playerMoves, getSettings().companionBias,
-                (prompt) => generateQuietPrompt({ quietPrompt: prompt, responseLength: 40, skipWIAN: true })),
+                (prompt) => qgen({ quietPrompt: prompt, responseLength: 40, skipWIAN: true })),
         onNpcSpeak: async ({ npc, playerText, room }) => {
             const ctx = getContext();
             const card = (ctx.characters || []).find((c) => c.name === npc.card || c.avatar === npc.card);
@@ -68,7 +80,7 @@ function buildDeps() {
             const persona = [card.description, card.personality].filter(Boolean).join(' ').replace(/\s+/g, ' ').slice(0, 1200);
             let reply;
             try {
-                reply = await generateQuietPrompt({
+                reply = await qgen({
                     quietPrompt: `[You are ${card.name}, an NPC the player is speaking with. ${persona}\nYou are at "${room}". The player said: "${playerText}". Reply in character as ${card.name} — 1-3 lines of dialogue and small action. Do not narrate the player or the wider scene.]`,
                     responseLength: 160,
                     skipWIAN: true,
@@ -85,7 +97,7 @@ function buildDeps() {
             const leftNote = companionDir ? ` {{char}} has just left, heading ${companionDir}.` : '';
             let prose;
             try {
-                prose = await generateQuietPrompt({
+                prose = await qgen({
                     quietPrompt: `[Narrate, in 2-3 vivid third-person sentences, the following happening to {{user}}, who is alone at "${playerRoom}".${leftNote} Do not voice {{char}}. Event:\n${result}]`,
                     responseLength: 160,
                     skipWIAN: true,
@@ -161,7 +173,7 @@ async function maybeFireEffect({ npc, playerText, room, reply }) {
         : '';
     let proposal;
     try {
-        const raw = await generateQuietPrompt({
+        const raw = await qgen({
             quietPrompt: `[Game-master check for NPC "${npc.name}" at "${room}". Player said: "${playerText}". ${npc.name} replied: "${String(reply).slice(0, 300)}".${questText} Does this interaction change game state? Respond ONLY JSON: {"effect":"grant"|"take"|"flag"|"none","amount":<int>,"flag":"<name>","questDone":"<quest id or empty>"}. Be conservative — "none" unless a reward, payment, or quest completion clearly happened.]`,
             responseLength: 60,
             skipWIAN: true,
@@ -241,7 +253,8 @@ function renderHud() {
             '<span class="st_if_hud_seg" id="st_if_hud_loc"></span>' +
             '<span class="st_if_hud_seg" id="st_if_hud_exits"></span>' +
             '<span class="st_if_hud_seg" id="st_if_hud_inv"></span>' +
-            '<span class="st_if_hud_seg" id="st_if_hud_comp"></span>';
+            '<span class="st_if_hud_seg" id="st_if_hud_comp"></span>' +
+            '<span class="st_if_hud_seg" id="st_if_hud_mode"></span>';
         form.parentElement.insertBefore(el, form);
         el.querySelector('.st_if_hud_pin').addEventListener('click', () => el.classList.toggle('st_if_collapsed'));
     }
@@ -260,6 +273,8 @@ function renderHud() {
     const compRoom = s.companion?.summary?.location;
     const apart = cfg?.companionTracking && compRoom && !readTogether(ctx.chatMetadata);
     el.querySelector('#st_if_hud_comp').textContent = apart ? `· 👥 ${compRoom}` : '';
+    const mode = getMode(ctx.chatMetadata);
+    el.querySelector('#st_if_hud_mode').textContent = mode === 'build' ? '· 🛠 build' : '';
 }
 
 // GENERATION_ENDED also fires for OUR OWN quiet extraction call, which would
@@ -282,7 +297,7 @@ function ensureExitsExtracted() {
     if (exitsLastAttemptKey === attemptKey) return;
     exitsLastAttemptKey = attemptKey;
     exitsExtractionInFlight = true;
-    extractExits(desc, (prompt) => generateQuietPrompt({ quietPrompt: prompt, responseLength: 60, skipWIAN: true }))
+    extractExits(desc, (prompt) => qgen({ quietPrompt: prompt, responseLength: 60, skipWIAN: true }))
         .then((exits) => {
             if (exits === null) return;            // parse failure — retry on next room/desc change
             setExitsForRoom(ctx.chatMetadata, room, exits, desc);
@@ -374,6 +389,66 @@ async function importWorld(payload) {
     saveMetadataDebounced();
     renderRoomPanel(); renderHud();
     return { count: graph.rooms.length, partial };
+}
+
+const WORLDS_URL = '/scripts/extensions/ST_IF/worlds/';
+
+/** Import a shipped card PNG (with embedded V2 data) into the character list. */
+async function importCardPng(file) {
+    const ctx = getContext();
+    const headers = (typeof getRequestHeaders === 'function') ? getRequestHeaders() : {};
+    const csrf = headers['X-CSRF-Token'] || headers['x-csrf-token'];
+    const blob = await (await fetch(`${WORLDS_URL}${file}`)).blob();
+    const fd = new FormData();
+    fd.append('avatar', blob, file.split('/').pop());
+    fd.append('file_type', 'png');
+    await fetch('/api/characters/import', { method: 'POST', headers: csrf ? { 'X-CSRF-Token': csrf } : {}, body: fd });
+    if (typeof ctx.getCharacters === 'function') await ctx.getCharacters();   // refresh the list
+}
+
+/**
+ * Seed a bundled world's NPCs/quests/cards/effectSafety from its sidecar manifest
+ * (worlds/<basename>.world.json). Idempotent: only seeds a fresh chat unless forced.
+ */
+async function seedScenario(worldFile, { force = false } = {}) {
+    if (!worldFile) return;
+    const base = String(worldFile).replace(/\.[^.]+$/, '');
+    let manifest;
+    try {
+        const res = await fetch(`${WORLDS_URL}${base}.world.json`);
+        if (!res.ok) return;                                  // no manifest → behave as before
+        manifest = parseManifest(await res.text());
+    } catch { return; }
+    if (!manifest) return;
+    const md = getContext().chatMetadata;
+    if (!readState(md)) return;
+    if (!force && (getNpcs(md).length || getQuests(md).length)) return;   // never clobber
+    if (force) { setNpcs(md, []); setQuests(md, []); }
+
+    const names = () => (getContext().characters || []).map((c) => c.name);
+    const plan = planSeed(manifest, names());
+    for (const card of plan.cardsToImport) {
+        try { await importCardPng(card.file); } catch (e) { console.warn('[ST_IF] card import failed', card, e); }
+    }
+    // Re-derive missing after import (a failed import leaves the card absent).
+    const have = new Set(names());
+    const missing = plan.npcs.filter((n) => n.card && !have.has(n.card)).map((n) => ({ npc: n.name, card: n.card }));
+
+    setNpcs(md, plan.npcs);
+    setQuests(md, plan.quests);
+    if (plan.effectSafety) { getSettings().effectSafety = plan.effectSafety; saveSettingsDebounced(); }
+    readState(md).scenarioFile = worldFile;
+    saveMetadataDebounced();
+    renderHud();
+
+    let msg = `*(scenario)* Loaded: ${plan.npcs.length} NPC(s), ${plan.quests.length} quest(s)${plan.effectSafety ? `, NPC effects: ${plan.effectSafety}` : ''}.`;
+    if (missing.length) {
+        msg += '\n' + missing.map((m) => `⚠ NPC "${m.npc}" expects card "${m.card}" (not found) — bind a replacement: /if-npc bind ${m.npc} <your card>`).join('\n');
+    }
+    if (plan.narrator && have.has(plan.narrator) && getContext().name2 !== plan.narrator) {
+        msg += `\n🎙 Narrator card "${plan.narrator}" is ready — for clean, faithful narration, run this scenario in a chat with that card.`;
+    }
+    postComment(msg);
 }
 
 /** Dev-mode: surface the opening scene as a toast when "Show raw game output" is on. */
@@ -542,6 +617,46 @@ function registerSlashCommands() {
     }));
 
     SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+        name: 'if-scenario',
+        helpString: 'Scenario bundle: \'reload\' re-seeds NPCs/quests from the world manifest (resets them); \'list\' shows what\'s loaded.',
+        unnamedArgumentList: [new SlashCommandArgument('reload | list', [ARGUMENT_TYPE.STRING], false, false, '')],
+        returns: ARGUMENT_TYPE.STRING,
+        callback: async (_args, value) => {
+            const md = getContext().chatMetadata;
+            const st = readState(md);
+            if (!st) return 'No story loaded.';
+            const sub = (String(value ?? '').trim().split(/\s+/)[0] || 'list').toLowerCase();
+            if (sub === 'reload') {
+                if (!st.scenarioFile) return 'No bundled scenario to reload (load one from the picker).';
+                await seedScenario(st.scenarioFile, { force: true });
+                return `Reloaded scenario from ${st.scenarioFile}.`;
+            }
+            const npcs = getNpcs(md), quests = getQuests(md);
+            return `Scenario: ${st.scenarioFile || '(none)'}\nNPCs: ${npcs.map((n) => n.name).join(', ') || '(none)'}\nQuests: ${quests.map((q) => `${q.id}[${q.status}]`).join(', ') || '(none)'}`;
+        },
+    }));
+
+    SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+        name: 'if-mode',
+        helpString: 'Narration mode: \'narrate\' (faithful play) or \'build\' (let the narrator extend the world at its edges). No argument reports the current mode. Persists with this chat.',
+        unnamedArgumentList: [new SlashCommandArgument('narrate | build', [ARGUMENT_TYPE.STRING], false, false, '')],
+        returns: ARGUMENT_TYPE.STRING,
+        callback: async (_args, value) => {
+            const md = getContext().chatMetadata;
+            if (!readState(md)) return 'No story loaded.';
+            const want = String(value ?? '').trim().toLowerCase();
+            if (!want) return `Mode: ${getMode(md)} (options: ${MODES.join(', ')}).`;
+            if (!MODES.includes(want)) return `Unknown mode "${want}". Options: ${MODES.join(', ')}.`;
+            setMode(md, want);
+            saveMetadataDebounced();
+            renderHud();
+            return want === 'build'
+                ? 'Mode: build — the narrator may now invent new rooms/objects/exits at the edges of the world.'
+                : 'Mode: narrate — faithful play; the narrator describes only what exists.';
+        },
+    }));
+
+    SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         name: 'if-map',
         helpString: 'Show a tree of the rooms the narrator has grown this chat.',
         returns: ARGUMENT_TYPE.STRING,
@@ -590,6 +705,7 @@ jQuery(async () => {
             try {
                 const bytes = new Uint8Array(await (await fetch(`/scripts/extensions/ST_IF/worlds/${file}`)).arrayBuffer());
                 await applyStoryBytes(label, bytes, id);
+                await seedScenario(file);                 // auto-seed NPCs/quests/cards from the manifest
                 toastr.success(`Loaded ${label}`, 'ST_IF');
             } catch (e) {
                 console.error('[ST_IF] world load failed', e);

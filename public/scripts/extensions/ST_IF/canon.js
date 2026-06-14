@@ -1,5 +1,19 @@
 // canon.js — pure assembly of the canon block injected into the prompt. No ST imports.
 
+/**
+ * A short role directive for the active narration mode, or '' for the default.
+ * 'narrate' = faithful play (the canon header already covers it); 'build' = let the
+ * narrator extend the world at its edges so new places persist.
+ * @param {string} mode
+ * @returns {string}
+ */
+export function modeDirective(mode) {
+    if (mode === 'build') {
+        return 'World-building mode: when the scene reaches an edge of the known world, you may introduce new rooms, objects, and exits that fit the established setting and tone. Name each new place in one word, and mention one or two concrete onward exits so it can persist and connect. Never contradict or rewrite places that already exist.';
+    }
+    return '';
+}
+
 function statusLine(status) {
     const parts = [`Location: ${status.location}.`];
     if (status.score !== null && status.score !== undefined) parts.push(`Score: ${status.score}.`);
@@ -11,11 +25,12 @@ function statusLine(status) {
  * @param {{outputs: string[], status: {location:string, score:number|null, moves:number|null}, ranCommands: boolean, injectStateOnRp: boolean, companionPresent?: boolean, companionActionCmd?: string|null}} args
  * @returns {string} canon block, or '' when nothing should be injected
  */
-export function buildCanonBlock({ outputs, status, ranCommands, injectStateOnRp, companionPresent, companionActionCmd, npcLine, npcSpeakingFor, questLine, effectLine }) {
+export function buildCanonBlock({ outputs, status, ranCommands, injectStateOnRp, companionPresent, companionActionCmd, npcLine, npcSpeakingFor, questLine, effectLine, mode }) {
+    const modeLine = modeDirective(mode);
     if (!ranCommands) {
         if (!injectStateOnRp) return '';
         const base = `[GAME STATE — ground truth, do not contradict]\n${statusLine(status)}`;
-        return [base, npcLine, questLine].filter(Boolean).join('\n');
+        return [base, modeLine, npcLine, questLine].filter(Boolean).join('\n');
     }
     const result = outputs.join('\n').trim();
     const lines = [
@@ -23,6 +38,7 @@ export function buildCanonBlock({ outputs, status, ranCommands, injectStateOnRp,
         `Action result: ${result}`,
         statusLine(status),
     ];
+    if (modeLine) lines.push(modeLine);
     if (companionActionCmd) lines.push(`The action "${companionActionCmd}" was performed by {{char}} — its result above is {{char}}'s own deed; narrate it as theirs.`);
     if (companionPresent) lines.push('{{char}} is here with you.');
     if (npcLine) lines.push(npcLine);

@@ -40,6 +40,40 @@ room + portable light, a switchable lamp, and takeable objects.
   the barkeep then pays the bounded reward (the LLM proposes, the engine validates, the VM
   grants real gold).
 
+## Scenario manifests (one-step setup)
+
+A bundled world may ship a sidecar `<basename>.world.json` that auto-seeds its NPCs, quests,
+character cards, and the NPC-effects setting when the world is loaded from the picker — so you
+don't have to run `/if-npc` and `/if-quest` by hand. Seeding only runs on a **fresh chat**
+(empty NPC + quest registries) and never clobbers a customised one; `/if-scenario reload`
+forces a reset, `/if-scenario list` shows what's loaded. Shipped cards live in `cards/`; a
+referenced card that isn't present (and isn't shipped) leaves the NPC narrator-voiced with a
+`/if-npc bind` hint. An optional `narrator` card is imported and suggested as the active
+character for clean, faithful narration (the bundled `cards/narrator.png`, "The Storyteller").
+Example (`tavern.world.json`):
+
+    {
+      "narrator": { "name": "The Storyteller", "file": "cards/narrator.png" },
+      "cards":  [{ "name": "Tomas the Barkeep", "file": "cards/tomas.png" }],
+      "npcs":   [{ "name": "tomas", "room": "taproom", "blurb": "the gruff keeper", "card": "Tomas the Barkeep" }],
+      "quests": [{ "id": "rats", "giver": "tomas", "goal": "clear the cellar rats",
+                   "reward": { "effect": "grant", "amount": 10 }, "condition": "rats_done" }],
+      "effectSafety": "safe"
+    }
+
+## Narration modes
+
+ST_IF narrates through whatever character card is active plus an injected `[GAME]` canon block.
+`/if-mode` switches the narrator's stance for the current chat (persisted in chat metadata):
+
+- `narrate` (default) — faithful play: describe only what the engine reports; invent nothing.
+- `build` — world-creation: at the edges of the known world the narrator may introduce new
+  rooms/objects/exits that fit the setting (implies dynamic-world growth for this chat). The HUD
+  shows a `🛠 build` badge while active.
+
+`cards/narrator.png` ("The Storyteller") is a neutral, CC0 narrator card tuned for this contract
+— load it for clean ground-truth narration, or use any character card for flavoured narration.
+
 ## Rebuilding
 
 The compiler is not committed. Fetch it once into `../tools/`:

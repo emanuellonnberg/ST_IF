@@ -1,5 +1,5 @@
 // turn.js — orchestrate one chat turn. Pure: all ST/VM deps injected.
-import { readState, recordTurn, getActiveSnapshot, setCompanion, getCompanionSnapshot, setTogether, readTogether, getFollowQueue, setFollowQueue, setRoomDescription, getRoomDescription, recordMapEdge, setInventoryText, getEdgesForRoom, getExitsForRoom, recordRoom, recordEdge, getGrownRooms, cellOfRoom, roomAtCell, getAnchors, setAnchor, nextAnchorCell, getNpcs, getQuests } from './state.js';
+import { readState, recordTurn, getActiveSnapshot, setCompanion, getCompanionSnapshot, setTogether, readTogether, getFollowQueue, setFollowQueue, setRoomDescription, getRoomDescription, recordMapEdge, setInventoryText, getEdgesForRoom, getExitsForRoom, recordRoom, recordEdge, getGrownRooms, cellOfRoom, roomAtCell, getAnchors, setAnchor, nextAnchorCell, getNpcs, getQuests, getMode } from './state.js';
 import { dirToRoom } from './exits.js';
 import { translate as translateDefault } from './translator.js';
 import { extractMoves, zone, detectShout, validateAction } from './companion.js';
@@ -39,6 +39,7 @@ export async function runTurn(deps, chat, type) {
     if (!player) return;
 
     const state = readState(metadata);
+    const mode = getMode(metadata);   // 'narrate' | 'build'
     const lastTurn = state.history[state.history.length - 1];
 
     // 2. SWIPE / regen on the same message → reuse cached commands, do not re-step.
@@ -51,6 +52,7 @@ export async function runTurn(deps, chat, type) {
             ranCommands: (lastTurn.cmds ?? []).length > 0,
             injectStateOnRp: settings.injectStateOnRp,
             companionActionCmd: lastTurn.companionCmd ?? null,
+            mode,
         });
         if (block) setPrompt(block);
         // Swipes rebuild fresh prompt copies: if the pair is apart, hide the
@@ -95,7 +97,7 @@ export async function runTurn(deps, chat, type) {
     // expandable, ask the LLM to invent the room there, materialise it via the
     // pool meta-commands, then walk in (its description becomes this turn's canon).
     // Single-protagonist by design (the companion VM is not grown); see the spec.
-    if (settings.dynamicWorld && deps.generateRoom && cmds.length && typeof vm.isExpandable === 'function') {
+    if ((settings.dynamicWorld || mode === 'build') && deps.generateRoom && cmds.length && typeof vm.isExpandable === 'function') {
         const lastCmd = cmds[cmds.length - 1];
         const dir = blockedMove(lastCmd, outputs[outputs.length - 1] ?? '');
         const fromDisplay = vm.getStatus().location;
@@ -340,7 +342,7 @@ export async function runTurn(deps, chat, type) {
 
         if (together) {
             const statusForCanon = companionActionCmd ? vm.getStatus() : status;
-            const block = buildCanonBlock({ outputs, status: statusForCanon, ranCommands: cmds.length > 0, injectStateOnRp: settings.injectStateOnRp, companionPresent: true, companionActionCmd, npcLine, npcSpeakingFor: npcSpeaker?.name ?? null, questLine, effectLine });
+            const block = buildCanonBlock({ outputs, status: statusForCanon, ranCommands: cmds.length > 0, injectStateOnRp: settings.injectStateOnRp, companionPresent: true, companionActionCmd, npcLine, npcSpeakingFor: npcSpeaker?.name ?? null, questLine, effectLine, mode });
             if (block) setPrompt(block);
         } else {
             const playerShouted = detectShout(player.text);
@@ -387,6 +389,7 @@ export async function runTurn(deps, chat, type) {
         npcSpeakingFor: npcSpeaker?.name ?? null,
         questLine,
         effectLine,
+        mode,
     });
     if (block) setPrompt(block);
     if (deps.debugLog && cmds.length) deps.debugLog({ outputs, status, cmds });

@@ -15,6 +15,7 @@ export function initState(metadata, storyId, snapshot) {
         grownRooms: { rooms: [], edges: [], anchors: {} },
         npcs: [],
         quests: [],
+        mode: 'narrate',
     };
     return metadata[KEY];
 }
@@ -156,6 +157,21 @@ export function setQuests(metadata, list) {
     const s = metadata[KEY];
     if (!s) throw new Error('ST_IF state not initialized');
     s.quests = Array.isArray(list) ? list : [];
+}
+
+/** Narration mode: 'narrate' (faithful play) | 'build' (world-creation). */
+export const MODES = ['narrate', 'build'];
+
+export function getMode(metadata) {
+    const m = metadata[KEY]?.mode;
+    return MODES.includes(m) ? m : 'narrate';
+}
+
+export function setMode(metadata, mode) {
+    const s = metadata[KEY];
+    if (!s) throw new Error('ST_IF state not initialized');
+    if (!MODES.includes(mode)) throw new Error(`unknown mode: ${mode}`);
+    s.mode = mode;
 }
 
 const ANCHOR_SPAN = 100000;   // frontier clusters sit this far apart on the grid
