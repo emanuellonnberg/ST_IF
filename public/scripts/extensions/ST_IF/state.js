@@ -14,6 +14,7 @@ export function initState(metadata, storyId, snapshot) {
         together: true,
         grownRooms: { rooms: [], edges: [], anchors: {} },
         npcs: [],
+        quests: [],
     };
     return metadata[KEY];
 }
@@ -144,6 +145,17 @@ export function setNpcs(metadata, list) {
     const s = metadata[KEY];
     if (!s) throw new Error('ST_IF state not initialized');
     s.npcs = Array.isArray(list) ? list : [];
+}
+
+/** Quests: [{ id, giver, goal, reward, condition?, status }]. */
+export function getQuests(metadata) {
+    return metadata[KEY]?.quests ?? [];
+}
+
+export function setQuests(metadata, list) {
+    const s = metadata[KEY];
+    if (!s) throw new Error('ST_IF state not initialized');
+    s.quests = Array.isArray(list) ? list : [];
 }
 
 const ANCHOR_SPAN = 100000;   // frontier clusters sit this far apart on the grid

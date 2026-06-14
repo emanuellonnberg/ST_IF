@@ -5,14 +5,24 @@
 ! an LLM-voiced NPC's reward becomes real ground truth.
 
 Constant XE_MAXFLAG = 32;
-Array XE_Flag --> XE_MAXFLAG;     ! set flags, stored as dictionary words
+Constant XE_FNBUF = 24;           ! per-flag name buffer (byte 0 = length)
+Array XE_FlagName -> XE_MAXFLAG * XE_FNBUF;   ! set flags, stored as TEXT (not dict words)
 Global XE_nflag = 0;
 
-! --- word helpers (same idiom as expanse.h) ---
-[ XE_DictOf wx; wn = wx; return NextWordStopped(); ];
-[ XE_HasFlag dv i;
-   for (i=0 : i<XE_nflag : i++) if (XE_Flag-->i == dv) rtrue;
-   rfalse;
+! --- text helpers (flags are arbitrary names, so match by characters) ---
+[ XE_FNm i; return XE_FlagName + i * XE_FNBUF; ];
+[ XE_WordEq wx arr   ad ln i;
+   ad = WordAddress(wx); ln = WordLength(wx);
+   if (ln ~= arr->0) rfalse;
+   for (i=0 : i<ln : i++) if (ad->i ~= arr->(i+1)) rfalse; rtrue;
+];
+[ XE_CopyWord wx arr cap   ad ln i;
+   ad = WordAddress(wx); ln = WordLength(wx); if (ln > cap-1) ln = cap-1;
+   arr->0 = ln; for (i=0 : i<ln : i++) arr->(i+1) = ad->i;
+];
+[ XE_FindFlag wx   i;
+   for (i=0 : i<XE_nflag : i++) if (XE_WordEq(wx, XE_FNm(i))) return i;
+   return -1;
 ];
 [ XE_NumOf wx   ad ln i n;       ! parse a non-negative integer from word wx
    ad = WordAddress(wx); ln = WordLength(wx); n = 0;
@@ -28,15 +38,13 @@ Global XE_nflag = 0;
 #Ifndef XE_Gold;    [ XE_Gold; return 0; ]; #Endif;
 
 ! --- meta-verbs the engine drives ---
-[ XflagSub  dv;
-   dv = XE_DictOf(2);
-   if (dv == 0 || dv == -1) "xflag bad";
-   if (XE_HasFlag(dv) == false && XE_nflag < XE_MAXFLAG) { XE_Flag-->XE_nflag = dv; XE_nflag++; }
+[ XflagSub;
+   if (WordLength(2) == 0) "xflag bad";
+   if (XE_FindFlag(2) == -1 && XE_nflag < XE_MAXFLAG) { XE_CopyWord(2, XE_FNm(XE_nflag), XE_FNBUF); XE_nflag++; }
    "xflag ok";
 ];
-[ XflagqSub  dv;
-   dv = XE_DictOf(2);
-   if (dv ~= 0 && dv ~= -1 && XE_HasFlag(dv)) print "1"; else print "0";
+[ XflagqSub;
+   if (XE_FindFlag(2) >= 0) print "1"; else print "0";
    new_line; rtrue;
 ];
 [ XgrantSub; XE_AddGold(XE_NumOf(2)); "xgrant ok"; ];

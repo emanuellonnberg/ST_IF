@@ -11,12 +11,14 @@ import { IFVM } from './vm.js';
 import { translate } from './translator.js';
 import { decideMove, decideAgency, decideUse } from './companion.js';
 import { runTurn } from './turn.js';
-import { readState, initState, getActiveSnapshot, rewindTo, KEY, setCompanion, getCompanionSnapshot, getRoomDescription, setRoomDescription, getInventoryText, getExitsForRoom, setExitsForRoom, getEdgesForRoom, readTogether, getWorldGraph, recordRoom, recordEdge, setAnchor, getNpcs, setNpcs } from './state.js';
+import { readState, initState, getActiveSnapshot, rewindTo, KEY, setCompanion, getCompanionSnapshot, getRoomDescription, setRoomDescription, getInventoryText, getExitsForRoom, setExitsForRoom, getEdgesForRoom, readTogether, getWorldGraph, recordRoom, recordEdge, setAnchor, getNpcs, setNpcs, getQuests, setQuests } from './state.js';
 import { loadSettings, getSettings, wireSettingsUI, base64ToBytes, bytesToBase64 } from './settings.js';
 import { stripReasoning } from './clean.js';
 import { extractExits, mergeExits, formatExitsLine } from './exits.js';
 import { formatMap, planReplay, upconvertV1 } from './worldmap.js';
 import { addNpc, removeNpc, bindCard } from './npc.js';
+import { parseEffectProposal, validateEffect, effectVerb } from './effects.js';
+import { addQuest, removeQuest, listQuests, resolveCompletion } from './quest.js';
 
 const vm = new IFVM();
 const companionVM = new IFVM();
@@ -37,7 +39,7 @@ function buildDeps() {
         clearPrompt: () =>
             setExtensionPrompt(KEY, '', extension_prompt_types.NONE, 0),
         save: () => saveMetadataDebounced(),
-        settings: { strictness: s.strictness, injectStateOnRp: s.injectStateOnRp, companionTracking: s.companionTracking, companionBias: s.companionBias, companionAgency: s.companionAgency, companionActs: s.companionActs, companionActionSafety: s.companionActionSafety, dynamicWorld: s.dynamicWorld, growthMode: s.growthMode },
+        settings: { strictness: s.strictness, injectStateOnRp: s.injectStateOnRp, companionTracking: s.companionTracking, companionBias: s.companionBias, companionAgency: s.companionAgency, companionActs: s.companionActs, companionActionSafety: s.companionActionSafety, dynamicWorld: s.dynamicWorld, growthMode: s.growthMode, effectSafety: s.effectSafety, maxGrant: s.maxGrant },
         // Invent a room when the player walks into the void (dynamic-world mode).
         // Returns the raw model string; turn.js parses/sanitises it. skipWIAN keeps
         // World Info out but leaves the character card / scenario in context for theme.
@@ -76,6 +78,7 @@ function buildDeps() {
                 return;
             }
             postNpcMessage(card, stripReasoning(reply));
+            await maybeFireEffect({ npc, playerText, room, reply });
         },
         onNarratePlayerRoom: async ({ playerRoom, outputs, companionDir }) => {
             const result = (outputs || []).join('\n').trim() || '(you wait)';
@@ -139,6 +142,76 @@ function postNpcMessage(card, text) {
     ctx.chat.push(message);
     ctx.addOneMessage(message);
     if (typeof ctx.saveChat === 'function') ctx.saveChat();
+}
+
+/**
+ * After an NPC speaks, optionally let the interaction change ground-truth state:
+ * the LLM proposes an effect, the engine bounds it, the VM (effects.h) executes it.
+ * Quest payouts use the quest's pre-set reward (not LLM-chosen) and are flag-gated.
+ */
+async function maybeFireEffect({ npc, playerText, room, reply }) {
+    const s = getSettings();
+    if (!s.effectSafety || s.effectSafety === 'off') return;
+    if (typeof vm.applyWorldEdits !== 'function') return;
+    const ctx = getContext();
+    const md = ctx.chatMetadata;
+    const quests = getQuests(md).filter((q) => q.giver === npc.name && q.status === 'active');
+    const questText = quests.length
+        ? ` Active quests from ${npc.name}: ${quests.map((q) => `${q.id} (${q.goal}${q.condition ? `, needs flag ${q.condition}` : ''})`).join('; ')}.`
+        : '';
+    let proposal;
+    try {
+        const raw = await generateQuietPrompt({
+            quietPrompt: `[Game-master check for NPC "${npc.name}" at "${room}". Player said: "${playerText}". ${npc.name} replied: "${String(reply).slice(0, 300)}".${questText} Does this interaction change game state? Respond ONLY JSON: {"effect":"grant"|"take"|"flag"|"none","amount":<int>,"flag":"<name>","questDone":"<quest id or empty>"}. Be conservative — "none" unless a reward, payment, or quest completion clearly happened.]`,
+            responseLength: 60,
+            skipWIAN: true,
+        });
+        proposal = parseEffectProposal(raw);
+    } catch (e) {
+        console.error('[ST_IF] effect proposal failed', e);
+        return;
+    }
+    if (!proposal) return;
+
+    let fired = null;            // the verb actually executed
+    let line = null;             // canon description for next turn
+
+    // Quest completion pays the quest's OWN reward (bounded), flag-gated if it has a condition.
+    const qid = String(proposal.questDone || '').trim();
+    if (qid) {
+        const flagSet = (q) => !q.condition || /^\s*1/.test(vm.query ? vm.query(`xflagq ${q.condition}`) : '0');
+        const q = resolveCompletion(getQuests(md), qid, true);   // existence/active
+        if (q && flagSet(q)) {
+            fired = effectVerb({ effect: q.reward.effect, amount: q.reward.amount, flag: q.reward.flag });
+            setQuests(md, getQuests(md).map((x) => (x.id === q.id ? { ...x, status: 'done' } : x)));
+            line = `Quest "${q.id}" complete — ${npc.name} grants the reward (${q.reward.effect === 'flag' ? `flag ${q.reward.flag}` : `${q.reward.amount} gold`}).`;
+        }
+    }
+    // Otherwise an ad-hoc effect, bounded by validateEffect.
+    if (!fired) {
+        const eff = validateEffect(proposal, { safety: s.effectSafety, maxGrant: s.maxGrant });
+        if (eff) {
+            fired = effectVerb(eff);
+            line = eff.effect === 'flag'
+                ? `(${npc.name} marks "${eff.flag}".)`
+                : `${npc.name} ${eff.effect === 'take' ? 'takes' : 'hands over'} ${eff.amount} gold.`;
+        }
+    }
+    if (!fired) return;
+
+    const out = vm.applyWorldEdits([fired]);
+    if (/bad|miss|unknown/i.test(out)) return;     // world lacks effects.h / bad verb
+    // Persist the changed VM + tell next turn's canon what happened (with the new gold total).
+    const st = readState(md);
+    if (st) {
+        st.snapshot = vm.save();
+        st.summary = vm.getStatus();
+        let total = '';
+        try { const g = vm.query ? vm.query('xgold').trim() : ''; if (/^\d+$/.test(g)) total = ` You now have ${g} gold.`; } catch { /* no economy */ }
+        st.pendingEffectLine = line + total;
+    }
+    saveMetadataDebounced();
+    renderHud();
 }
 
 /** Update the persistent "Current room" box from this chat's state. */
@@ -430,6 +503,41 @@ function registerSlashCommands() {
             }
             if (!list.length) return 'No NPCs yet. /if-npc add <name> @ <room> : <blurb>';
             return list.map((n) => `${n.name} @ ${n.room}${n.card ? ` (card: ${n.card})` : ''} — ${n.blurb}`).join('\n');
+        },
+    }));
+
+    SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+        name: 'if-quest',
+        helpString: 'Manage quests: add <id> giver=<npc> goal="..." reward=<gold N|flag F> [needs=<flag>] | list | remove <id>.',
+        unnamedArgumentList: [new SlashCommandArgument('subcommand + args', [ARGUMENT_TYPE.STRING], false, false, '')],
+        returns: ARGUMENT_TYPE.STRING,
+        callback: async (_args, value) => {
+            const md = getContext().chatMetadata;
+            if (!readState(md)) return 'No story loaded.';
+            const v = String(value ?? '').trim();
+            const sub = (v.split(/\s+/)[0] || 'list').toLowerCase();
+            const rest = v.slice(sub.length).trim();
+            let list = getQuests(md);
+            if (sub === 'add') {
+                const id = (rest.match(/^(\S+)/) || [])[1];
+                const giver = (rest.match(/giver=(\S+)/) || [])[1];
+                const goal = (rest.match(/goal="([^"]*)"/) || [])[1] || (rest.match(/goal=(\S+)/) || [])[1] || '';
+                const rg = rest.match(/reward=gold\s+(\d+)/i);
+                const rf = rest.match(/reward=flag\s+(\S+)/i);
+                const needs = (rest.match(/needs=(\S+)/) || [])[1];
+                if (!id || !giver || (!rg && !rf)) return 'Usage: /if-quest add <id> giver=<npc> goal="..." reward=<gold N|flag F> [needs=<flag>]';
+                const reward = rg ? { effect: 'grant', amount: Number(rg[1]) } : { effect: 'flag', flag: rf[1] };
+                list = addQuest(list, { id, giver: giver.toLowerCase(), goal, reward, condition: needs });
+                setQuests(md, list); saveMetadataDebounced();
+                return `Added quest "${id}" from ${giver.toLowerCase()}.`;
+            }
+            if (sub === 'remove') {
+                list = removeQuest(list, rest);
+                setQuests(md, list); saveMetadataDebounced();
+                return `Removed quest "${rest}".`;
+            }
+            if (!list.length) return 'No quests. /if-quest add <id> giver=<npc> goal="..." reward=gold 10';
+            return listQuests(list).map((q) => `${q.id} [${q.status}] giver=${q.giver} — ${q.goal} → ${q.reward.effect === 'flag' ? `flag ${q.reward.flag}` : `${q.reward.amount} gold`}${q.condition ? ` (needs ${q.condition})` : ''}`).join('\n');
         },
     }));
 

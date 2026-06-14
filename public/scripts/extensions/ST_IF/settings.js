@@ -25,6 +25,8 @@ export const defaultSettings = {
     companionActionSafety: 'safe',   // safe (verb allowlist) | open
     dynamicWorld: false,             // narrator invents rooms on blocked moves (expandable worlds)
     growthMode: 'anywhere',          // anywhere (any wall) | guided (only where the room hints an exit)
+    effectSafety: 'off',             // off | safe (grant/flag) | open (also take) — NPC effects
+    maxGrant: 25,                    // cap on a single NPC gold grant/take
     storyName: '',
     storyId: '',       // bundled-world id (for export/import base matching)
     storyBase64: '',   // the .z5/.z8 bytes, base64
@@ -99,6 +101,12 @@ export function wireSettingsUI(onStoryLoaded) {
     });
     $('#st_if_growth_mode').val(s.growthMode).on('change', function () {
         s.growthMode = String($(this).val()); saveSettingsDebounced();
+    });
+    $('#st_if_effect_safety').val(s.effectSafety).on('change', function () {
+        s.effectSafety = String($(this).val()); saveSettingsDebounced();
+    });
+    $('#st_if_max_grant').val(s.maxGrant).on('input', function () {
+        s.maxGrant = Number($(this).val()); saveSettingsDebounced();
     });
     $('#st_if_strictness').val(s.strictness).on('change', function () {
         s.strictness = String($(this).val()); saveSettingsDebounced();
