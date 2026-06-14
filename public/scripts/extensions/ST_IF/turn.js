@@ -1,10 +1,11 @@
 // turn.js — orchestrate one chat turn. Pure: all ST/VM deps injected.
-import { readState, recordTurn, getActiveSnapshot, setCompanion, getCompanionSnapshot, setTogether, readTogether, getFollowQueue, setFollowQueue, setRoomDescription, getRoomDescription, recordMapEdge, setInventoryText, getEdgesForRoom } from './state.js';
+import { readState, recordTurn, getActiveSnapshot, setCompanion, getCompanionSnapshot, setTogether, readTogether, getFollowQueue, setFollowQueue, setRoomDescription, getRoomDescription, recordMapEdge, setInventoryText, getEdgesForRoom, getExitsForRoom } from './state.js';
 import { dirToRoom } from './exits.js';
 import { translate as translateDefault } from './translator.js';
 import { extractMoves, zone, detectShout, validateAction } from './companion.js';
 import { buildCanonBlock, buildApartCanonBlock } from './canon.js';
 import { compactInventory } from './clean.js';
+import { parseRoomJson, sanitizeRoom, buildMetaCommands, blockedMove, directionSuggested } from './worldgen.js';
 
 const SKIP_TYPES = new Set(['quiet', 'impersonate']);
 
@@ -86,6 +87,35 @@ export async function runTurn(deps, chat, type) {
         }
         prevLoc = nowLoc;
     }
+
+    // 5b. DYNAMIC WORLD GROWTH — if the last move hit a wall and the story is
+    // expandable, ask the LLM to invent the room there, materialise it via the
+    // pool meta-commands, then walk in (its description becomes this turn's canon).
+    // Single-protagonist by design (the companion VM is not grown); see the spec.
+    if (settings.dynamicWorld && deps.generateRoom && cmds.length && typeof vm.isExpandable === 'function') {
+        const lastCmd = cmds[cmds.length - 1];
+        const dir = blockedMove(lastCmd, outputs[outputs.length - 1] ?? '');
+        const fromRoom = vm.getStatus().location;
+        // In "guided" mode only grow a direction the room's prose hints at (reusing
+        // the cached exit extraction); "anywhere" grows on any wall.
+        const mayGrow = settings.growthMode !== 'guided'
+            || directionSuggested(getExitsForRoom(metadata, fromRoom), dir);
+        if (dir && mayGrow && vm.isExpandable()) {
+            try {
+                const raw = await deps.generateRoom(dir, vm.getStatus(), player.text);
+                const room = sanitizeRoom(parseRoomJson(raw) ?? {});
+                const editOut = vm.applyWorldEdits(buildMetaCommands(dir, room));
+                if (!/no-free-room|no-room/i.test(editOut)) {
+                    outputs.push(vm.step(dir));            // re-issue: arrival is the new canon
+                    playerMoveCmds.push(lastCmd);
+                    recordMapEdge(metadata, fromRoom, dir, vm.getStatus().location);
+                }
+            } catch (e) {
+                if (deps.debugLog) deps.debugLog({ note: 'worldgen failed', error: String(e) });
+            }
+        }
+    }
+
     const status = vm.getStatus();
 
     // Capture the current room description for the persistent display:

@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { IFVM } from '../vm.js';
+import { sanitizeRoom, buildMetaCommands } from '../worldgen.js';
 
 const story = new Uint8Array(readFileSync(new URL('./fixtures/Advent.z5', import.meta.url)));
 
@@ -479,4 +480,51 @@ test('coffee: the mug is stained after use and washes clean', async () => {
     vm.step('drink coffee');
     assert.match(vm.step('examine mug'), /dregs|stained/i);
     assert.match(vm.step('wash mug'), /clean/i);
+});
+
+// --- Dynamic world growth (expanse pool, canned JSON, no LLM) ---------------
+const expanse = new Uint8Array(readFileSync(new URL('../worlds/expanse.z5', import.meta.url)));
+
+test('expanse: is detected as expandable; apartment is not', async () => {
+    const e = new IFVM(); await e.load(expanse);
+    const a = new IFVM(); await a.load(apt);
+    assert.equal(e.isExpandable(), true);
+    assert.equal(a.isExpandable(), false);
+});
+
+test('expanse: a generated room is reachable, named, populated, and back-linked', async () => {
+    const vm = new IFVM(); await vm.load(expanse);
+    assert.equal(vm.getStatus().location, 'Origin');
+    assert.match(vm.step('north'), /can't go that way/i);          // blocked first
+    const room = sanitizeRoom({
+        name: 'attic', description: 'A dusty attic with a round window.',
+        objects: [
+            { name: 'trunk', description: 'A battered travelling trunk.', takeable: true },
+            { name: 'cobwebs', description: 'Grey and sticky.', takeable: false },
+        ],
+    });
+    vm.applyWorldEdits(buildMetaCommands('north', room));
+    assert.match(vm.step('north'), /attic/i);                      // now reachable + named
+    assert.match(vm.step('examine trunk'), /battered travelling trunk/i); // parse_name resolves it
+    assert.match(vm.step('take trunk'), /taken/i);
+    assert.match(vm.step('take cobwebs'), /fixed in place/i);      // non-takeable guard
+    assert.match(vm.step('south'), /Origin/);                      // reverse exit linked
+    assert.match(vm.step('north'), /attic/i);                      // stable on revisit
+});
+
+test('expanse: a generated room survives a save/restore round-trip', async () => {
+    const vm = new IFVM(); await vm.load(expanse);
+    vm.step('north');
+    vm.applyWorldEdits(buildMetaCommands('north', sanitizeRoom({ name: 'vault', description: 'A cold stone vault.', objects: [] })));
+    vm.step('north');
+    const snap = vm.save();
+    const vm2 = new IFVM(); await vm2.load(expanse);
+    vm2.restore(snap);
+    assert.match(vm2.step('look'), /vault/i);                      // persisted through the snapshot
+    assert.match(vm2.step('south'), /Origin/);                     // and its link
+});
+
+test('expanse: an unmaterialised direction stays a normal blocked move', async () => {
+    const vm = new IFVM(); await vm.load(expanse);
+    assert.match(vm.step('east'), /can't go that way/i);           // graceful: no room, no crash
 });
