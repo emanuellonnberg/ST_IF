@@ -11,11 +11,11 @@ import { IFVM } from './vm.js';
 import { translate } from './translator.js';
 import { decideMove, decideAgency, decideUse } from './companion.js';
 import { runTurn } from './turn.js';
-import { readState, initState, getActiveSnapshot, rewindTo, KEY, setCompanion, getCompanionSnapshot, getRoomDescription, setRoomDescription, getInventoryText, getExitsForRoom, setExitsForRoom, getEdgesForRoom, readTogether, getGrownRooms, recordGrownRoom } from './state.js';
+import { readState, initState, getActiveSnapshot, rewindTo, KEY, setCompanion, getCompanionSnapshot, getRoomDescription, setRoomDescription, getInventoryText, getExitsForRoom, setExitsForRoom, getEdgesForRoom, readTogether, getWorldGraph, recordRoom, recordEdge } from './state.js';
 import { loadSettings, getSettings, wireSettingsUI, base64ToBytes, bytesToBase64 } from './settings.js';
 import { stripReasoning } from './clean.js';
 import { extractExits, mergeExits, formatExitsLine } from './exits.js';
-import { formatMap, planReplay, pathToRoom, reverseDir } from './worldmap.js';
+import { formatMap, planReplay, upconvertV1 } from './worldmap.js';
 
 const vm = new IFVM();
 const companionVM = new IFVM();
@@ -40,12 +40,14 @@ function buildDeps() {
         // Invent a room when the player walks into the void (dynamic-world mode).
         // Returns the raw model string; turn.js parses/sanitises it. skipWIAN keeps
         // World Info out but leaves the character card / scenario in context for theme.
-        generateRoom: (dir, status, _playerText) =>
-            generateQuietPrompt({
-                quietPrompt: `[The player is at "${status.location}" and moves ${dir} into a place that does not exist yet. Invent a room that fits the current story, setting, and tone. In the description, name one or two onward exits as concrete ways to go (e.g. "a door leads north", "a passage heads east") so the world can keep growing. Respond with ONLY JSON, no prose: {"name":"short room name","description":"2-3 vivid sentences that mention the onward exits","objects":[{"name":"one or two word noun","description":"short","takeable":true}]}. Use 0-3 objects; object names must be simple lowercase nouns.]`,
-                responseLength: 200,
+        generateRoom: (dir, status, _playerText, existing = []) => {
+            const known = existing.length ? ` Existing rooms you may connect to by exact name: ${existing.join(', ')}.` : '';
+            return generateQuietPrompt({
+                quietPrompt: `[The player is at "${status.location}" and moves ${dir} into a place that does not exist yet. Invent a room that fits the current story, setting, and tone. Give it a ONE-WORD name. In the description, name one or two onward exits as concrete ways to go (e.g. "a door leads north") so the world can keep growing.${known} You may optionally connect an exit to an existing room. Respond with ONLY JSON, no prose: {"name":"oneword","description":"2-3 vivid sentences mentioning the exits","objects":[{"name":"one or two word noun","description":"short","takeable":true}],"connections":[{"dir":"east","to":"existingroomname"}]}. Use 0-3 objects (simple lowercase nouns); connections may be empty.]`,
+                responseLength: 220,
                 skipWIAN: true,
-            }),
+            });
+        },
         companionVM,
         companionUse: (playerText, scene, playerCmds) =>
             decideUse(playerText, scene, playerCmds, getSettings().companionInitiative,
@@ -213,42 +215,42 @@ function downloadText(filename, text) {
     URL.revokeObjectURL(url);
 }
 
-/** Export the current chat's grown world as a downloadable JSON file. */
+/** Export the current chat's grown world as a downloadable JSON file (graph v2). */
 function exportWorld() {
     const ctx = getContext();
-    const rooms = getGrownRooms(ctx.chatMetadata);
-    if (!rooms.length) { toastr.info('No grown rooms to export yet.', 'ST_IF'); return; }
-    const payload = { format: 'st_if_world', version: 1, story: 'expanse', rooms };
+    const graph = getWorldGraph(ctx.chatMetadata);
+    if (!graph.rooms.length) { toastr.info('No grown rooms to export yet.', 'ST_IF'); return; }
+    const payload = { format: 'st_if_world', version: 2, story: 'expanse', rooms: graph.rooms, edges: graph.edges };
     const safe = String(getSettings().storyName || 'expanse').replace(/[^\w.-]+/g, '_');
     downloadText(`world-${safe}.json`, JSON.stringify(payload, null, 2));
-    toastr.success(`Exported ${rooms.length} room(s).`, 'ST_IF');
+    toastr.success(`Exported ${graph.rooms.length} room(s).`, 'ST_IF');
 }
 
-/** Rebuild a shared world: fresh expanse + replay the room records into it. */
+/** Rebuild a shared world: fresh expanse + replay the graph (rooms + edges) into it. */
 async function importWorld(payload) {
     if (!payload || payload.format !== 'st_if_world' || payload.story !== 'expanse' || !Array.isArray(payload.rooms)) {
         throw new Error('Not a valid ST_IF expanse world file.');
     }
-    const rooms = payload.rooms.filter((r) => r && typeof r.name === 'string' && typeof r.from === 'string' && typeof r.dir === 'string');
+    // v1 (tree) files upconvert to a graph; v2 already carries rooms + edges.
+    const graph = Array.isArray(payload.edges)
+        ? { rooms: payload.rooms, edges: payload.edges }
+        : upconvertV1(payload.rooms);
     const bytes = new Uint8Array(await (await fetch('/scripts/extensions/ST_IF/worlds/expanse.z5')).arrayBuffer());
-    await applyStoryBytes('Expanse (imported)', bytes);   // fresh seed + reset state
-    const editOut = vm.applyWorldEdits(planReplay(rooms));
+    await applyStoryBytes('Expanse (imported)', bytes);   // fresh seed + reset state (player at Origin)
+    const editOut = vm.applyWorldEdits(planReplay(graph));  // xnew/xlinkn don't move the player
     const partial = /no-free-room/i.test(editOut);
-    // Return the player to Origin (replay leaves the cursor at the last parent room).
-    const lastFrom = rooms.length ? rooms[rooms.length - 1].from : 'Origin';
-    const back = (pathToRoom(rooms, lastFrom) ?? []).slice().reverse().map(reverseDir);
-    if (back.length) vm.applyWorldEdits(back);
-    // Persist the rebuilt world + re-seed the records so /if-map and re-export work.
+    // Persist the rebuilt world + re-seed the graph so /if-map and re-export work.
     const ctx = getContext();
     const st = readState(ctx.chatMetadata);
     st.snapshot = vm.save();
     st.summary = vm.getStatus();
     setRoomDescription(ctx.chatMetadata, vm.query ? vm.query('look') : '');
-    for (const r of rooms) recordGrownRoom(ctx.chatMetadata, r);
+    for (const r of graph.rooms) recordRoom(ctx.chatMetadata, r);
+    for (const e of graph.edges) recordEdge(ctx.chatMetadata, e);
     setCompanion(ctx.chatMetadata, { snapshot: vm.save(), summary: vm.getStatus() });
     saveMetadataDebounced();
     renderRoomPanel(); renderHud();
-    return { count: rooms.length, partial };
+    return { count: graph.rooms.length, partial };
 }
 
 /** Dev-mode: surface the opening scene as a toast when "Show raw game output" is on. */
@@ -350,7 +352,7 @@ function registerSlashCommands() {
         helpString: 'Show a tree of the rooms the narrator has grown this chat.',
         returns: ARGUMENT_TYPE.STRING,
         callback: async () => {
-            const map = formatMap(getGrownRooms(getContext().chatMetadata));
+            const map = formatMap(getWorldGraph(getContext().chatMetadata));
             postComment('*(map)*\n```\n' + map + '\n```');
             return 'Map posted.';
         },

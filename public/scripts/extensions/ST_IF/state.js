@@ -12,7 +12,7 @@ export function initState(metadata, storyId, snapshot) {
         storyId, snapshot, summary: null, history: [],
         companion: { snapshot, summary: null, followQueue: [] },
         together: true,
-        grownRooms: [],
+        grownRooms: { rooms: [], edges: [] },
     };
     return metadata[KEY];
 }
@@ -134,17 +134,50 @@ export function getEdgesForRoom(metadata, room) {
     return metadata[KEY]?.mapEdges?.[room] ?? {};
 }
 
-/** Rooms the narrator has grown at runtime, in creation order (for map/export). */
-export function getGrownRooms(metadata) {
-    return metadata[KEY]?.grownRooms ?? [];
+/** The grown world as a graph: { rooms:[{name,x,y,z,description,objects}], edges:[{from,dir,to}] }. */
+export function getWorldGraph(metadata) {
+    const g = metadata[KEY]?.grownRooms;
+    if (g && Array.isArray(g.rooms) && Array.isArray(g.edges)) return g;
+    return { rooms: [], edges: [] };
 }
 
-/** Append a grown-room record: { from, dir, name, description, objects }. */
-export function recordGrownRoom(metadata, rec) {
+/** Just the grown rooms (back-compat for callers that only want the room list). */
+export function getGrownRooms(metadata) {
+    return getWorldGraph(metadata).rooms;
+}
+
+function ensureGraph(metadata) {
     const s = metadata[KEY];
     if (!s) throw new Error('ST_IF state not initialized');
-    s.grownRooms = s.grownRooms ?? [];
-    s.grownRooms.push(rec);
+    if (!s.grownRooms || !Array.isArray(s.grownRooms.rooms)) s.grownRooms = { rooms: [], edges: [] };
+    return s.grownRooms;
+}
+
+/** Append a grown-room record: { name, x, y, z, description, objects }. */
+export function recordRoom(metadata, rec) {
+    ensureGraph(metadata).rooms.push(rec);
+}
+
+/** Append a connection edge: { from, dir, to } (deduped on the directed triple). */
+export function recordEdge(metadata, edge) {
+    const g = ensureGraph(metadata);
+    if (!g.edges.some((e) => e.from === edge.from && e.dir === edge.dir && e.to === edge.to)) {
+        g.edges.push(edge);
+    }
+}
+
+/** Cell of a room by name (Origin = 0,0,0); null if unknown. */
+export function cellOfRoom(metadata, name) {
+    if (name === 'Origin') return { x: 0, y: 0, z: 0 };
+    const r = getWorldGraph(metadata).rooms.find((x) => x.name === name);
+    return r ? { x: r.x, y: r.y, z: r.z } : null;
+}
+
+/** Name of the room occupying a cell ('Origin' for 0,0,0); null if empty. */
+export function roomAtCell(metadata, cell) {
+    if (cell && cell.x === 0 && cell.y === 0 && cell.z === 0) return 'Origin';
+    const r = getWorldGraph(metadata).rooms.find((x) => x.x === cell?.x && x.y === cell?.y && x.z === cell?.z);
+    return r ? r.name : null;
 }
 
 export function recordMapEdge(metadata, fromRoom, dir, toRoom) {
