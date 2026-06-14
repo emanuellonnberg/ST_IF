@@ -113,6 +113,21 @@ ${objs}
    }
 ];
 
+! --- find a room by its typed name (for xlinkn / graph replay) ---
+! The host sets XP_root to its start room; the token "origin" resolves to it.
+#Ifndef XP_root; Global XP_root = 0; #Endif;
+[ XP_WordIsOrigin wx ad ln;
+   ad = WordAddress(wx); ln = WordLength(wx);
+   if (ln ~= 6) rfalse;
+   return (ad->0 == 'o' && ad->1 == 'r' && ad->2 == 'i' && ad->3 == 'g' && ad->4 == 'i' && ad->5 == 'n');
+];
+[ XP_FindRoom wx o;
+   if (XP_WordIsOrigin(wx)) return XP_root;
+   objectloop (o ofclass BlankRoom)
+      if (o.used && XP_WordEq(wx, XP_RNm(o))) return o;
+   return 0;
+];
+
 ! --- meta-verbs the engine drives ---
 ! xroom <dir> <name>  : claim a blank room <dir> of the player's room, name it, link both ways.
 [ XroomSub  newR code;
@@ -150,11 +165,31 @@ ${objs}
    XP_CopyTail(2, XP_ODs(XP_lastobj), XP_ODBUF);
    "xodesc ok";
 ];
+! xnew <name> : claim + name a blank room with NO link (for graph replay).
+[ XnewSub  newR;
+   newR = XP_FreeRoom();
+   if (newR == 0) "xnew no-free-room";
+   XP_CopyWord(2, XP_RNm(newR), XP_NBUF);
+   newR.used = true;
+   XP_lastroom = newR;
+   "xnew ok";
+];
+! xlinkn <fromname> <dir> <toname> : link two existing named rooms both ways.
+[ XlinknSub  f code t;
+   f = XP_FindRoom(2);
+   code = XP_DirCode(3);
+   t = XP_FindRoom(4);
+   if (f == 0 || t == 0 || code == 0) "xlinkn miss";
+   XP_LinkExits(f, t, code);
+   "xlinkn ok";
+];
 
 Verb 'xroom'  * topic -> Xroom;
 Verb 'xdesc'  * topic -> Xrdesc;
 Verb 'xobj'   * topic -> Xobj;
 Verb 'xodesc' * topic -> Xodesc;
+Verb 'xnew'   * topic -> Xnew;
+Verb 'xlinkn' * topic -> Xlinkn;
 `;
 
 writeFileSync(new URL('./expanse.h', import.meta.url), h);

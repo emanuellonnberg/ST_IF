@@ -5,8 +5,11 @@ Constant Headline "^An empty, growable world.^";
 Include "Parser";
 Include "VerbLib";
 
+Global XP_root = 0;   ! the pool's root room (for xlinkn "origin"); set below.
+
 [ Initialise;
    location = Origin;
+   XP_root = Origin;
    "^You stand at the origin of an empty world. Walk in any direction.^";
 ];
 
