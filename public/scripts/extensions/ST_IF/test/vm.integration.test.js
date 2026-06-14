@@ -551,6 +551,38 @@ test('expanse: an LLM-style cross-link connects two rooms both ways', async () =
     assert.match(vm.step('up'), /vault/i);        // both-ways
 });
 
+// --- Expandable authored world (garden frontier) ---------------------------
+const gardenExp = new Uint8Array(readFileSync(new URL('../worlds/garden-expanse.z5', import.meta.url)));
+
+test('authored frontier: interior rooms are sealed, the Lawn is growable', async () => {
+    const vm = new IFVM(); await vm.load(gardenExp);
+    assert.equal(vm.xCanGrow(), 'no');                // Porch — interior, sealed
+    vm.step('north');                                 // Lawn — the frontier
+    assert.equal(vm.xCanGrow(), 'lawn');
+    vm.step('east');                                  // Pond — interior, sealed
+    assert.equal(vm.xCanGrow(), 'no');
+});
+
+test('authored frontier: a room grown off the Lawn links back and stays growable', async () => {
+    const vm = new IFVM(); await vm.load(gardenExp);
+    vm.step('north');                                 // Lawn
+    vm.applyWorldEdits(['xroom north meadow', 'xdesc a wildflower meadow']);
+    assert.match(vm.step('north'), /meadow/i);
+    assert.equal(vm.xCanGrow(), 'meadow');            // generated rooms keep growing
+    assert.match(vm.step('south'), /Lawn/i);          // links back to the frontier
+});
+
+test('authored frontier: a grown graph replays onto the same authored base', async () => {
+    const graph = {
+        rooms: [{ name: 'meadow', x: 100001, y: 0, z: 0, description: 'a meadow', objects: [] }],
+        edges: [{ from: 'lawn', dir: 'north', to: 'meadow' }],
+    };
+    const vm = new IFVM(); await vm.load(gardenExp);
+    vm.applyWorldEdits(planReplay(graph));            // xnew meadow; xlinkn lawn north meadow
+    vm.step('north');                                 // Porch -> Lawn
+    assert.match(vm.step('north'), /meadow/i);        // the frontier link replayed
+});
+
 test('expanse: planReplay rebuilds a looped graph (import round-trip)', async () => {
     const graph = {
         rooms: [

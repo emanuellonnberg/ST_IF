@@ -1,0 +1,5 @@
+! garden-expanse.inf — the garden compiled WITH the runtime-growth pool. CC0.
+! Defines MAKE_EXPANDABLE, then includes the plain garden source (whose
+! #Ifdef MAKE_EXPANDABLE blocks pull in expanse.h and register the Lawn frontier).
+Constant MAKE_EXPANDABLE;
+Include "garden.inf";

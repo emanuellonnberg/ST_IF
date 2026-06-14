@@ -18,6 +18,22 @@ Array XP_ObjDesc  -> XP_OBJS * XP_ODBUF;
 Global XP_lastroom = 0;
 Global XP_lastobj  = 0;
 
+! --- frontier registry: authored rooms the host marks as growable ---
+Attribute growable;
+Constant XP_MAXFRONT = 12;
+Array XP_FrontObj  --> XP_MAXFRONT;   ! frontier room objects
+Array XP_FrontWord --> XP_MAXFRONT;   ! their slugs (I6 dictionary words)
+Global XP_nfront = 0;
+! Host calls this in Initialise: XP_RegisterFrontier(Street, 'street');
+[ XP_RegisterFrontier room dword;
+   give room growable;
+   if (XP_nfront < XP_MAXFRONT) {
+      XP_FrontObj-->XP_nfront = room;
+      XP_FrontWord-->XP_nfront = dword;
+      XP_nfront++;
+   }
+];
+
 ! --- buffer address helpers ---
 [ XP_RNm o; return XP_RoomName + o.slot * XP_NBUF; ];
 [ XP_RDs o; return XP_RoomDesc + o.slot * XP_RDBUF; ];
@@ -62,7 +78,7 @@ Class BlankRoom
        short_name [; if ((XP_RNm(self))->0 == 0) print "somewhere"; else XP_PrintBuf(XP_RNm(self)); rtrue; ],
        description [; if ((XP_RDs(self))->0 == 0) "An undefined space."; XP_PrintBuf(XP_RDs(self)); new_line; rtrue; ],
        parse_name [ c; c=0; while (wn <= num_words && XP_WordEq(wn, XP_RNm(self))) { wn++; c++; } return c; ],
-  has light;
+  has light growable;
 
 Class BlankObject
   with slot 0,
@@ -238,15 +254,12 @@ BlankObject xobj_95 with slot 95;
 ];
 
 ! --- find a room by its typed name (for xlinkn / graph replay) ---
-! The host sets XP_root to its start room; the token "origin" resolves to it.
-#Ifndef XP_root; Global XP_root = 0; #Endif;
-[ XP_WordIsOrigin wx ad ln;
-   ad = WordAddress(wx); ln = WordLength(wx);
-   if (ln ~= 6) rfalse;
-   return (ad->0 == 'o' && ad->1 == 'r' && ad->2 == 'i' && ad->3 == 'g' && ad->4 == 'i' && ad->5 == 'n');
-];
-[ XP_FindRoom wx o;
-   if (XP_WordIsOrigin(wx)) return XP_root;
+! Frontiers (incl. the root) match by dictionary-word slug; generated rooms by buffer.
+[ XP_FindRoom wx   o i dv;
+   wn = wx; dv = NextWordStopped();
+   if (dv ~= 0 && dv ~= -1)
+      for (i=0 : i<XP_nfront : i++)
+         if (XP_FrontWord-->i == dv) return XP_FrontObj-->i;
    objectloop (o ofclass BlankRoom)
       if (o.used && XP_WordEq(wx, XP_RNm(o))) return o;
    return 0;
@@ -308,9 +321,18 @@ BlankObject xobj_95 with slot 95;
    "xlinkn ok";
 ];
 
-Verb 'xroom'  * topic -> Xroom;
-Verb 'xdesc'  * topic -> Xrdesc;
-Verb 'xobj'   * topic -> Xobj;
-Verb 'xodesc' * topic -> Xodesc;
-Verb 'xnew'   * topic -> Xnew;
-Verb 'xlinkn' * topic -> Xlinkn;
+! xcangrow : print the current room's growth slug, or "no" if it is sealed.
+[ XcangrowSub  i;
+   for (i=0 : i<XP_nfront : i++)
+      if (XP_FrontObj-->i == location) { print (address) XP_FrontWord-->i; new_line; rtrue; }
+   if (location ofclass BlankRoom && location has growable) { XP_PrintBuf(XP_RNm(location)); new_line; rtrue; }
+   "no";
+];
+
+Verb 'xroom'    * topic -> Xroom;
+Verb 'xdesc'    * topic -> Xrdesc;
+Verb 'xobj'     * topic -> Xobj;
+Verb 'xodesc'   * topic -> Xodesc;
+Verb 'xnew'     * topic -> Xnew;
+Verb 'xlinkn'   * topic -> Xlinkn;
+Verb 'xcangrow' * -> Xcangrow;
