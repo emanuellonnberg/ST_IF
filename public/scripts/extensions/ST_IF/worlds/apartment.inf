@@ -5,6 +5,7 @@
 ! stove, wait 8 turns for cooked pasta — leave it too long and it burns).
 Constant Story "APARTMENT";
 Constant Headline "^A small ST_IF sandbox apartment.^";
+Replace BurnSub;          ! redefined below: light/burn a switchable -> SwitchOn
 Include "Parser";
 Include "VerbLib";
 
@@ -127,16 +128,16 @@ Object flashlight "flashlight"
   with name 'flashlight' 'torch' 'light',
        description "A small flashlight.",
        before [;
-         SwitchOn: give self light; "You switch the flashlight on.";
-         SwitchOff: give self ~light; "You switch the flashlight off.";
+         SwitchOn: give self on light; "You switch the flashlight on.";
+         SwitchOff: give self ~on ~light; "You switch the flashlight off.";
        ],
   has switchable;
 
 Object lamp "floor lamp"
   with name 'lamp' 'floor', description "A tall floor lamp.",
        before [;
-         SwitchOn: give self light; "The lamp glows warmly.";
-         SwitchOff: give self ~light; "The lamp goes dark.";
+         SwitchOn: give self on light; "The lamp glows warmly.";
+         SwitchOff: give self ~on ~light; "The lamp goes dark.";
        ],
   has switchable static;
 
@@ -843,3 +844,18 @@ Verb 'pet' 'stroke' 'fuss'
 
 Verb 'wash'
    * noun                     -> Rub;
+
+! ---- Natural light verbs -----------------------------------------------------
+! The prose->command translator emits "light X" for switch-on intents (never
+! "switch on" / "turn on"), so the flashlight/lamp never lit. 'light' is a
+! library synonym for Burn, so redirect Burn on a switchable object to SwitchOn;
+! also accept "use"/"activate" -> SwitchOn and "extinguish"/... -> SwitchOff.
+[ BurnSub;
+    if (noun has switchable) { <SwitchOn noun>; rtrue; }   ! light/burn lamp -> on
+    if (noun has animate) return L__M(##Burn, 2, noun);
+    L__M(##Burn, 1, noun);
+];
+Verb 'extinguish' 'douse' 'snuff' 'unlight' 'quench'
+   * noun                     -> SwitchOff;
+Verb 'use' 'activate'
+   * noun                     -> SwitchOn;
