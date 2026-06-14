@@ -28,6 +28,12 @@ room + portable light, a switchable lamp, and takeable objects.
   the stove, and `wash` the dirty pot/mug at the tap after eating.
 - `garden.inf` / `garden.z5` — outdoors: Porch hub, Lawn, Greenhouse, Pond, dark Toolshed;
   lantern, fountain, trowel.
+- `tavern.inf` / `tavern.z5` — "The Adventurer's Rest", a classic-RPG tavern hub: a Common
+  Room with taproom/kitchen and a dark cellar (needs a lantern), plus a deterministic
+  economy the narrator weaves around — `gold` as the meter, order `ale` from the barkeep
+  (sober → tipsy → cut off at roaring drunk), ladle `stew` to get fed, rent a bed to `rest`,
+  and `gamble` dice or cards. `status` reports gold/drink/hunger/rest/day. A worked example
+  of a larger authored hub (originally developed in the standalone `adventurer_tavern` repo).
 
 ## Rebuilding
 

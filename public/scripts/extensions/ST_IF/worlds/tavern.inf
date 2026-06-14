@@ -1,0 +1,597 @@
+! tavern.inf — "The Adventurer's Rest", an ST_IF hub world. Public domain (CC0).
+! A classic-RPG tavern: a hub for the narrator LLM. Deterministic ground truth
+! (place, presence, coin, contracts); the LLM weaves narrative around it.
+Constant Story "THE ADVENTURER'S REST";
+Constant Headline "^A classic-RPG tavern hub for ST_IF.^";
+Include "Parser";
+Include "VerbLib";
+
+Global gold = 20;          ! the unifying meter
+Global drunk = 0;          ! 0 sober .. 3 roaring drunk
+Global fed = 0;            ! has eaten
+Global rested = 0;         ! has slept in a rented bed
+Global day = 1;            ! advances on sleep
+Global active_quest = 0;   ! 0 none, 1 rats, 2 escort, 3 locket
+Global room_rented = 0;    ! a bed is paid for tonight
+Global rat_dead = 0;       ! 0 alive, 1 killed (unclaimed), 2 bounty claimed
+Global escort_done = 0;    ! 0 not delivered, 1 delivered (unclaimed), 2 claimed
+Global bandit_dead = 0;    ! 0 alive, 1 slain
+Global locket_done = 0;    ! locket bounty claimed
+
+[ Initialise;
+   location = CommonRoom;
+   move lantern to Taproom;
+   move barkeep to Taproom;
+   move tankard to Taproom;
+   move cook to Kitchen;
+   move cauldron to Kitchen;
+   move bowl to Kitchen;
+   StartDaemon(cauldron);
+   move gambler to Den;
+   move dicetable to Den;
+   move bed to GuestRoom;
+   move sellsword to CommonRoom;
+   move hedgemage to CommonRoom;
+   move rogue to CommonRoom;
+   move bard to CommonRoom;
+   move stablehand to Courtyard;
+   move horse to Courtyard;
+   move questboard to CommonRoom;
+   move rat to Cellar;
+   move merchant to CommonRoom;
+   move bandit to BanditStretch;
+   move hollowlog to Glade;
+   move locket to hollowlog;
+   "^You step into the warm, smoky common room of the Adventurer's Rest.^";
+];
+
+! ---- Rooms -----------------------------------------------------------------
+
+Object CommonRoom "Common Room"
+  with description "The heart of the tavern: a roaring hearth, long trestle tables, and a battered quest board on the wall. The taproom is east, a gambling den west, stairs lead up, and the courtyard lies south (out).",
+       e_to Taproom, w_to Den, u_to Landing, out_to Courtyard, s_to Courtyard,
+  has light;
+
+Object Taproom "Taproom"
+  with description "A long bar of dark oak lined with stools and casks. The common room is west, the kitchen north, and a trapdoor leads down to the cellar.",
+       w_to CommonRoom, n_to Kitchen, d_to Cellar,
+  has light;
+
+Object Kitchen "Kitchen"
+  with description "A hot kitchen dominated by a great hearth and a bubbling cauldron. The taproom is south; cellar stairs lead down.",
+       s_to Taproom, d_to Cellar,
+  has light;
+
+Object Cellar "Cellar"
+  with description "A cold stone cellar stacked with kegs and crates. Stairs lead up to the taproom.",
+       u_to Taproom,
+  has ;                                   ! no light: dark unless you carry a lit lantern
+
+Object Den "Gambling Den"
+  with description "A smoky back room with a felt-topped gaming table. The common room is east.",
+       e_to CommonRoom,
+  has light;
+
+Object Landing "Upstairs Landing"
+  with description "A narrow landing over the taproom. The stairs go down; a guest room lies east.",
+       d_to CommonRoom, e_to GuestRoom,
+  has light;
+
+Object GuestRoom "Guest Room"
+  with description "A plain rented room with a straw bed. The landing is west.",
+       w_to Landing,
+  has light;
+
+Object Courtyard "Courtyard"
+  with description "A muddy courtyard with a stable. The King's Road runs east into the wider world; the common room is back inside, north.",
+       in_to CommonRoom, n_to CommonRoom, e_to KingsRoad,
+  has light;
+
+! ---- Beyond the gate: the King's Road, the woods, and Mistford --------------
+
+Object KingsRoad "King's Road"
+  with description "A rutted dirt road. The tavern courtyard is back west, the road continues east toward Mistford, and a forest trail branches north.",
+       w_to Courtyard, e_to BanditStretch, n_to ForestTrail,
+  has light;
+
+Object BanditStretch "Bandit-Haunted Stretch"
+  with description "A lonely stretch of road hemmed by boulders — good ground for an ambush. The road runs west back toward the tavern and east on to Mistford.",
+       w_to KingsRoad, e_to Mistford,
+  has light;
+
+Object Mistford "Mistford"
+  with description "The muddy gate of Mistford, a small market town. The road back west leads to the tavern.",
+       w_to BanditStretch,
+  has light;
+
+Object ForestTrail "Forest Trail"
+  with description "A narrow trail winding under old trees. The King's Road is south; the trail climbs north into a glade.",
+       s_to KingsRoad, n_to Glade,
+  has light;
+
+Object Glade "Mossy Glade"
+  with description "A still, mossy glade dappled with light. A rotting hollow log lies among the ferns. The trail leads back south.",
+       s_to ForestTrail,
+  has light;
+
+! ---- Portable light (the only way to see in the Cellar) --------------------
+
+Object lantern "brass lantern"
+  with name 'lantern' 'lamp' 'light' 'brass',
+       description "A brass lantern that throws a steady light when lit.",
+       before [;
+         SwitchOn: give self light; "The lantern flares to life.";
+         SwitchOff: give self ~light; "You shutter the lantern.";
+       ],
+  has switchable;
+
+! ---- Taproom: barkeep + drink service --------------------------------------
+
+Object barkeep "barkeep"
+  with name 'barkeep' 'bartender' 'keeper' 'host' 'innkeeper' 'man',
+       description "A broad, genial barkeep polishing a tankard — the heart of the Rest. Ask for a drink, a room, or an honest bounty.",
+       life [;
+         Ask, Tell, Answer, Order:
+           "The barkeep nods, ready to pour a drink, rent a room, or pay out a bounty.";
+       ],
+  has animate;
+
+Object tankard "tankard"
+  with name 'tankard' 'mug' 'flagon' 'drink' 'ale' 'beer' 'mead' 'wine',
+       content 0,                          ! 0 empty, 1 ale, 2 mead, 3 wine
+       description [;
+          if (self.content == 0) "An empty wooden tankard.";
+          print "A tankard of ";
+          switch (self.content) { 1: print "ale"; 2: print "mead"; 3: print "wine"; }
+          ".";
+       ],
+       before [;
+          Drink:
+             if (self.content == 0) "The tankard is empty — order a drink first.";
+             self.content = 0;
+             if (drunk < 3) drunk = drunk + 1;
+             "You drain the tankard.";
+       ],
+  has ;
+
+! ---- Kitchen: cook + stew --------------------------------------------------
+
+Object cook "cook"
+  with name 'cook' 'chef' 'woman',
+       description "A sweating cook stirs the great cauldron, ladle in hand. Three gold buys a bowl.",
+       life [;
+         Ask, Tell, Answer, Order:
+           "~Bowl of stew? Three gold,~ the cook grunts, not breaking her stir.";
+       ],
+  has animate;
+
+Object cauldron "cauldron"
+  with name 'cauldron' 'pot' 'stew' 'hearth',
+       description "A great iron cauldron of thick stew simmers over the hearth.",
+       daemon [;
+          if (self notin location) rfalse;
+          if (random(3) == 1) "^The cauldron of stew bubbles thickly.^";
+          rfalse;
+       ],
+       before [;
+          Eat:
+             if (bowl.stew) { bowl.stew = 0; fed = 1; "You eat the hearty stew. Warm and filling."; }
+             "Ladle some stew into a bowl first.";
+       ],
+  has static;
+
+Object bowl "wooden bowl"
+  with name 'bowl' 'dish' 'stew',
+       stew 0,
+       description [;
+          if (self.stew) "A wooden bowl full of hot stew.";
+          "An empty wooden bowl.";
+       ],
+       before [;
+          Eat:
+             if (self.stew == 0) "The bowl is empty — ladle some stew first.";
+             self.stew = 0; fed = 1;
+             "You eat the hearty stew. Warm and filling.";
+       ],
+  has ;
+
+! ---- Gambling Den ----------------------------------------------------------
+
+Object gambler "gambler"
+  with name 'gambler' 'stranger' 'woman',
+       description "A sharp-eyed gambler shuffling a worn deck, coins stacked at her elbow.",
+       life [;
+         Ask, Tell, Answer, Order:
+           "~Care to test your luck?~ the gambler purrs, nodding at the table.";
+       ],
+  has animate;
+
+Object dicetable "gaming table"
+  with name 'table' 'dice' 'cards' 'felt' 'deck',
+       description "A felt-topped table strewn with dice and a worn deck of cards.",
+  has static;
+
+! ---- Lodging ---------------------------------------------------------------
+
+Object roomkey "iron room key"
+  with name 'key' 'room' 'iron',
+       description "A heavy iron key to an upstairs room.",
+  has ;
+
+Object bed "straw bed"
+  with name 'bed' 'straw' 'cot' 'mattress',
+       description "A simple straw bed — enough for an honest night's sleep.",
+  has static supporter enterable;
+
+! ---- Roster: adventurer NPCs (presence markers; the LLM voices them) --------
+
+Object sellsword "sellsword"
+  with name 'sellsword' 'fighter' 'warrior' 'mercenary' 'soldier',
+       description "A scarred sellsword in dented mail, a broadsword across her knees — a warrior for hire.",
+       life [;
+         Ask, Tell, Answer, Order:
+           "The sellsword grunts. ~Steel's for sale, if the coin's right.~";
+       ],
+  has animate;
+
+Object hedgemage "hedge-mage"
+  with name 'mage' 'wizard' 'hedge-mage' 'hedgemage' 'sorcerer' 'arcane',
+       description "A threadbare hedge-mage muttering over a guttering candle, fingers stained with arcane chalk.",
+       life [;
+         Ask, Tell, Answer, Order:
+           "The hedge-mage blinks. ~Spells? Small ones. Cheap ones. Mostly reliable.~";
+       ],
+  has animate;
+
+Object rogue "rogue"
+  with name 'rogue' 'thief' 'scout' 'cutpurse',
+       description "A lean rogue lounging in the shadows, flipping a dagger — a scout and a cutpurse both.",
+       life [;
+         Ask, Tell, Answer, Order:
+           "The rogue smirks. ~Doors, locks, secrets — I open all three.~";
+       ],
+  has animate;
+
+Object bard "bard"
+  with name 'bard' 'minstrel' 'singer' 'lute',
+       description "A bright-eyed bard tuning a battered lute, ready with a song or a rumor.",
+       playing 0,                          ! 0 silent, else tune id 1..4
+       rumor_idx 0,                        ! which rumor the next tip yields
+       tune [;                             ! prints the current tune's name
+          switch (self.playing) {
+             1: print "a lively jig";
+             2: print "a sweeping ballad";
+             3: print "a rollicking drinking song";
+             4: print "a mournful tale";
+             default: print "nothing";
+          }
+       ],
+       daemon [;                           ! ambient music while playing, if you're present
+          if (self.playing == 0) rfalse;
+          if (self notin location) rfalse;
+          print "^The bard plays "; self.tune(); print ".^";
+          rtrue;
+       ],
+       life [;
+         Ask, Tell, Answer, Order:
+           "The bard strums a chord. ~A song, a tale, a rumor — name your pleasure.~";
+       ],
+  has animate;
+
+Object stablehand "stablehand"
+  with name 'stablehand' 'hand' 'groom' 'boy',
+       description "A mud-spattered stablehand forking hay, the road at his back.",
+       life [;
+         Ask, Tell, Answer, Order:
+           "The stablehand tips his cap. ~Horse is fed and rested, ready for the road.~";
+       ],
+  has animate;
+
+Object horse "horse"
+  with name 'horse' 'mare' 'mount' 'stable' 'saddle',
+       description "A patient brown mare, saddled and ready, tethered by the stable.",
+  has animate;
+
+! ---- Quest board + the cellar-rats earn-path -------------------------------
+
+Object questboard "quest board"
+  with name 'board' 'quest' 'quests' 'notices' 'contracts' 'parchment',
+       description [;
+          print "A board pinned with parchment contracts:^";
+          print "  - Cellar rats: clear the vermin below. Reward: 10 gold.";
+          if (rat_dead >= 1) print " [done]";
+          new_line;
+          print "  - Escort to Mistford: guard a merchant up the road. Reward: 25 gold.";
+          if (escort_done >= 1) print " [done]";
+          new_line;
+          print "  - The lost locket: recover a keepsake. Reward: 15 gold.";
+          if (locket_done) print " [done]";
+          new_line;
+          if (active_quest == 1) print "  (Taken: Cellar rats.)^";
+          if (active_quest == 2) print "  (Taken: Escort to Mistford.)^";
+          if (active_quest == 3) print "  (Taken: The lost locket.)^";
+          rtrue;
+       ],
+  has static;
+
+Object rat "cellar rat"
+  with name 'rat' 'vermin' 'rodent',
+       description "A fat, bristling cellar rat.",
+       before [;
+          Attack:
+             rat_dead = 1;
+             remove self;
+             "You corner the rat and dispatch it with a sharp blow.";
+       ],
+  has animate;
+
+! ---- Escort quest: merchant (follows you) + road bandit ---------------------
+
+Object merchant "merchant"
+  with name 'merchant' 'trader' 'man',
+       description "A nervous merchant in a travelling cloak, hoping for an escort to Mistford.",
+       ! Trails the player to Mistford once the escort is accepted (Mochi pattern),
+       ! but will not walk into the bandit stretch while the bandit lives.
+       daemon [;
+          if (active_quest ~= 2) rfalse;
+          if (escort_done) rfalse;
+          if (self in location) rfalse;                 ! already with you
+          if (location == BanditStretch && bandit_dead == 0) {
+             ! hang back; warn if you can see him from here (you can't, he's behind)
+             rfalse;
+          }
+          move self to location;
+          if (location == Mistford) {
+             escort_done = 1;
+             StopDaemon(self);
+             "^The merchant arrives at Mistford safe beside you. ~Well done! Claim your fee back at the Rest.~^";
+          }
+          "^The merchant hurries along behind you.^";
+       ],
+       life [;
+         Ask, Tell, Answer, Order:
+           "~Just see me safe to Mistford,~ the merchant pleads. ~Mind the bandits on the road.~";
+       ],
+  has animate;
+
+Object bandit "road bandit"
+  with name 'bandit' 'robber' 'brigand' 'thief',
+       description "A rough bandit with a notched blade, blocking the road.",
+       before [;
+          Attack:
+             bandit_dead = 1;
+             remove self;
+             "You trade blows and cut the bandit down. The road is clear.";
+       ],
+  has animate;
+
+! ---- Locket quest: a hollow log hiding the keepsake ------------------------
+
+Object hollowlog "hollow log"
+  with name 'log' 'hollow' 'stump' 'ferns' 'fern',
+       description "A rotting hollow log half-buried in moss.",
+       before [;
+          Search:
+             if (self hasnt open) give self open;
+             if (locket in self)
+                "You rummage through the rotting log and uncover a tarnished silver locket.";
+             "The hollow log is empty now.";
+       ],
+  has static container openable;
+
+Object locket "silver locket"
+  with name 'locket' 'silver' 'keepsake' 'pendant',
+       description "A tarnished silver locket on a fine chain.",
+  has ;
+
+Include "Grammar";
+
+! ---- Economy readouts ------------------------------------------------------
+
+[ PurseSub;
+   print "You have "; print gold; " gold.";
+];
+Verb 'purse' * -> Purse;
+Verb 'count' * 'gold'/'coin'/'coins'/'money' -> Purse;
+
+[ StatusSub;
+   print "Gold: "; print gold; print ". ";
+   if (drunk == 0)      print "Sober";
+   else if (drunk == 1) print "Tipsy";
+   else if (drunk == 2) print "Drunk";
+   else                 print "Roaring drunk";
+   print ". ";
+   if (fed) print "Well-fed"; else print "Hungry";
+   print ". ";
+   if (rested) print "Rested"; else print "Weary";
+   print ". Day "; print day; print ".^";
+   rtrue;
+];
+Verb 'status' 'condition' * -> Status;
+
+! ---- Drink service ---------------------------------------------------------
+
+[ DoOrder kind price;
+   if (barkeep notin location) "There is no barkeep here to serve you.";
+   if (drunk >= 3) "~You've had enough, friend,~ the barkeep says, and won't pour another.";
+   if (gold < price) "You count your coin and come up short.";
+   if (tankard notin player && tankard notin location) "You've no tankard to fill.";
+   if (tankard.content ~= 0) "Finish your current drink first.";
+   gold = gold - price;
+   tankard.content = kind;
+   if (tankard notin player) move tankard to player;
+   print "The barkeep fills your tankard. (-"; print price; print " gold)^";
+   rtrue;
+];
+! Bare "drink" defaults to your tankard (the library otherwise asks "what?").
+[ QuaffSub;
+   if (tankard notin player && tankard notin location) "You've nothing to drink.";
+   <Drink tankard>;
+];
+Extend 'drink' first
+   * -> Quaff;
+
+[ OrderAleSub;  DoOrder(1, 2); ];
+[ OrderMeadSub; DoOrder(2, 2); ];
+[ OrderWineSub; DoOrder(3, 3); ];
+Verb 'order'
+   * 'ale'/'beer'  -> OrderAle
+   * 'mead'        -> OrderMead
+   * 'wine'        -> OrderWine;
+
+! ---- Stew service ----------------------------------------------------------
+
+[ LadleSub;
+   if (cauldron notin location) "There is no cauldron here.";
+   if (bowl notin player) "You need a bowl in hand to ladle stew into.";
+   if (bowl.stew) "Your bowl is already full.";
+   if (gold < 3) "The cook holds out a hand — stew costs 3 gold, and you're short.";
+   gold = gold - 3;
+   bowl.stew = 1;
+   "You pay the cook and ladle a steaming bowl of stew. (-3 gold)";
+];
+Verb 'ladle' 'serve'
+   *                    -> Ladle
+   * 'stew'             -> Ladle
+   * 'stew' 'from' noun -> Ladle;
+
+! ---- Gambling --------------------------------------------------------------
+
+[ DoGamble wager;
+   if (dicetable notin location) "There is no gaming table here.";
+   if (gold < wager) "You haven't the coin to make the wager.";
+   if (random(2) == 1) {
+      gold = gold + wager;
+      print "Fortune favors you — you win "; print wager; print " gold!^";
+      rtrue;
+   }
+   gold = gold - wager;
+   print "The luck turns — you lose "; print wager; print " gold.^";
+   rtrue;
+];
+[ PlayDiceSub;  DoGamble(5); ];
+[ PlayCardsSub; DoGamble(5); ];
+Verb 'play' 'gamble' 'bet' 'wager'
+   * 'dice'  -> PlayDice
+   * 'cards' -> PlayCards;
+
+! ---- Rent a room + sleep ---------------------------------------------------
+
+[ RentSub;
+   if (barkeep notin location) "You can only rent a room from the barkeep.";
+   if (room_rented) "You've already got a room for the night.";
+   if (gold < 5) "A room costs 5 gold, and your purse is too light.";
+   gold = gold - 5;
+   room_rented = 1;
+   if (roomkey notin player) move roomkey to player;
+   "The barkeep slides you an iron key. ~Up the stairs, first on the right.~ (-5 gold)";
+];
+Verb 'rent'
+   * 'room'  -> Rent
+   *         -> Rent;
+
+[ SnoozeSub;
+   if (bed notin location) "There's no bed here to sleep in.";
+   if (room_rented == 0) "You've not paid for a bed. See the barkeep.";
+   rested = 1; drunk = 0; fed = 0;
+   day = day + 1;
+   room_rented = 0;                ! the night is spent; rent again tomorrow
+   "You sink into the straw and sleep soundly. You wake rested, a new day begun.";
+];
+Verb 'snooze'
+   *       -> Snooze
+   * noun  -> Snooze;
+Extend 'sleep' replace
+   *       -> Snooze
+   * noun  -> Snooze;
+
+! ---- Quests: accept + claim ------------------------------------------------
+
+[ AcceptRatsSub;
+   if (questboard notin location) "There's no quest board here.";
+   active_quest = 1; "You tear down the cellar-rats notice. The job is yours.";
+];
+[ AcceptEscortSub;
+   if (questboard notin location) "There's no quest board here.";
+   active_quest = 2;
+   if (escort_done == 0) StartDaemon(merchant);   ! the merchant begins trailing you
+   "You take the Mistford escort contract. The merchant gathers his pack to follow.";
+];
+[ AcceptLocketSub;
+   if (questboard notin location) "There's no quest board here.";
+   active_quest = 3; "You take the lost-locket contract.";
+];
+Verb 'accept'
+   * 'rats'/'rat'/'vermin'  -> AcceptRats
+   * 'escort'/'merchant'    -> AcceptEscort
+   * 'locket'/'keepsake'    -> AcceptLocket;
+
+[ ClaimSub;
+   if (barkeep notin location) "Bounties are paid by the barkeep.";
+   if (rat_dead == 1) {
+      gold = gold + 10;
+      rat_dead = 2;
+      if (active_quest == 1) active_quest = 0;
+      "~Rats gone? Good work.~ The barkeep counts out 10 gold. (+10 gold)";
+   }
+   if (escort_done == 1) {
+      gold = gold + 25;
+      escort_done = 2;
+      if (active_quest == 2) active_quest = 0;
+      "~The merchant sent word he's safe in Mistford.~ The barkeep counts out 25 gold. (+25 gold)";
+   }
+   if (locket in player) {
+      gold = gold + 15;
+      remove locket;
+      locket_done = 1;
+      if (active_quest == 3) active_quest = 0;
+      "~The keepsake! Its owner will be overjoyed.~ The barkeep counts out 15 gold. (+15 gold)";
+   }
+   "The barkeep has no bounty for you right now.";
+];
+Verb 'claim'
+   * 'reward'/'bounty'  -> Claim
+   *                    -> Claim;
+
+! ---- Bard: request music + tip for rumors ----------------------------------
+
+[ BardPlay t;
+   if (bard notin location) "The bard isn't here to play for you.";
+   bard.playing = t;
+   StartDaemon(bard);
+   print "The bard strikes up "; bard.tune(); print ".^";
+   rtrue;
+];
+[ ReqJigSub;    BardPlay(1); ];
+[ ReqBalladSub; BardPlay(2); ];
+[ ReqSongSub;   BardPlay(3); ];
+[ ReqTaleSub;   BardPlay(4); ];
+[ ReqStopSub;
+   if (bard notin location) "The bard isn't here.";
+   bard.playing = 0;
+   StopDaemon(bard);
+   "The bard sets down the lute.";
+];
+Verb 'request'
+   * 'jig'/'dance'                      -> ReqJig
+   * 'ballad'/'love'                    -> ReqBallad
+   * 'song'/'tune'/'music'/'drinking'  -> ReqSong
+   * 'tale'/'story'/'dirge'            -> ReqTale
+   * 'silence'/'quiet'/'stop'          -> ReqStop;
+
+[ TipSub;
+   if (bard notin location) "The bard isn't here to play for you.";
+   if (gold < 1) "You've not a coin to spare for the bard.";
+   gold = gold - 1;
+   switch (bard.rumor_idx) {
+      0: print "The bard leans in. ~They say the Mistford road's gone thick with bandits — that escort contract pays well for a reason.~^";
+      1: print "The bard leans in. ~A merchant's daughter lost a silver locket in the eastern woods. Sentimental folk pay handsomely.~^";
+      2: print "The bard leans in. ~The cellar's not just rats, they whisper — something older stirs in the dark.~^";
+      3: print "The bard leans in. ~Gold flows at that gaming table, friend — but it flows out faster than in.~^";
+   }
+   bard.rumor_idx = (bard.rumor_idx + 1) % 4;
+   rtrue;
+];
+Verb 'tip'
+   * noun  -> Tip
+   *       -> Tip;
