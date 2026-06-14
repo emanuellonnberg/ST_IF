@@ -1,5 +1,5 @@
 // turn.js — orchestrate one chat turn. Pure: all ST/VM deps injected.
-import { readState, recordTurn, getActiveSnapshot, setCompanion, getCompanionSnapshot, setTogether, readTogether, getFollowQueue, setFollowQueue, setRoomDescription, getRoomDescription, recordMapEdge, setInventoryText, getEdgesForRoom, getExitsForRoom } from './state.js';
+import { readState, recordTurn, getActiveSnapshot, setCompanion, getCompanionSnapshot, setTogether, readTogether, getFollowQueue, setFollowQueue, setRoomDescription, getRoomDescription, recordMapEdge, setInventoryText, getEdgesForRoom, getExitsForRoom, recordGrownRoom } from './state.js';
 import { dirToRoom } from './exits.js';
 import { translate as translateDefault } from './translator.js';
 import { extractMoves, zone, detectShout, validateAction } from './companion.js';
@@ -109,6 +109,8 @@ export async function runTurn(deps, chat, type) {
                     outputs.push(vm.step(dir));            // re-issue: arrival is the new canon
                     playerMoveCmds.push(lastCmd);
                     recordMapEdge(metadata, fromRoom, dir, vm.getStatus().location);
+                    // Record the room as generated (for /if-map + export/import).
+                    recordGrownRoom(metadata, { from: fromRoom, dir, name: room.name, description: room.description, objects: room.objects });
                 }
             } catch (e) {
                 if (deps.debugLog) deps.debugLog({ note: 'worldgen failed', error: String(e) });

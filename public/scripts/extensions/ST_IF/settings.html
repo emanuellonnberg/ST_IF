@@ -87,6 +87,13 @@
                 <option value="guided">Guided (only where an exit is hinted)</option>
             </select>
 
+            <div>Grown world: <span title="Use /if-map to see the rooms you've grown.">share or reload it</span></div>
+            <input id="st_if_world_import_file" type="file" hidden accept=".json" />
+            <div class="flex-container">
+                <div id="st_if_world_export" class="menu_button" title="Download the rooms grown this chat as a JSON file.">Export world</div>
+                <div id="st_if_world_import" class="menu_button" title="Load a shared world JSON: rebuilds it on a fresh Expanse.">Import world</div>
+            </div>
+
             <hr />
             <div><b>Current room</b></div>
             <div id="st_if_room" class="st_if_room">(no game loaded)</div>
