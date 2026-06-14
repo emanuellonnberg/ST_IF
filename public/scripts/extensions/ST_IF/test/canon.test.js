@@ -2,6 +2,18 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildCanonBlock } from '../canon.js';
 
+test('present NPCs and the speaking cue appear only when provided', () => {
+    const base = { outputs: ['A tavern.'], status: { location: 'tavern', score: 0, moves: 1 }, ranCommands: true };
+    const plain = buildCanonBlock(base);
+    assert.doesNotMatch(plain, /Present here/);
+    const withNpc = buildCanonBlock({ ...base, npcLine: 'Present here: barkeep — gruff.', npcSpeakingFor: 'barkeep' });
+    assert.match(withNpc, /Present here: barkeep — gruff\./);
+    assert.match(withNpc, /barkeep is here and will answer for themselves/);
+    const noSpeaker = buildCanonBlock({ ...base, npcLine: 'Present here: hazel — shy.' });
+    assert.match(noSpeaker, /Present here: hazel/);
+    assert.doesNotMatch(noSpeaker, /answer for themselves/);
+});
+
 test('action turn includes result and status', () => {
     const block = buildCanonBlock({
         outputs: ['You take the brass lantern.', 'You head north. A dark cave.'],

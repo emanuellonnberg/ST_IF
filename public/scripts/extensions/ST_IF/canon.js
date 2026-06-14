@@ -11,10 +11,11 @@ function statusLine(status) {
  * @param {{outputs: string[], status: {location:string, score:number|null, moves:number|null}, ranCommands: boolean, injectStateOnRp: boolean, companionPresent?: boolean, companionActionCmd?: string|null}} args
  * @returns {string} canon block, or '' when nothing should be injected
  */
-export function buildCanonBlock({ outputs, status, ranCommands, injectStateOnRp, companionPresent, companionActionCmd }) {
+export function buildCanonBlock({ outputs, status, ranCommands, injectStateOnRp, companionPresent, companionActionCmd, npcLine, npcSpeakingFor }) {
     if (!ranCommands) {
         if (!injectStateOnRp) return '';
-        return `[GAME STATE — ground truth, do not contradict]\n${statusLine(status)}`;
+        const base = `[GAME STATE — ground truth, do not contradict]\n${statusLine(status)}`;
+        return npcLine ? `${base}\n${npcLine}` : base;
     }
     const result = outputs.join('\n').trim();
     const lines = [
@@ -24,6 +25,8 @@ export function buildCanonBlock({ outputs, status, ranCommands, injectStateOnRp,
     ];
     if (companionActionCmd) lines.push(`The action "${companionActionCmd}" was performed by {{char}} — its result above is {{char}}'s own deed; narrate it as theirs.`);
     if (companionPresent) lines.push('{{char}} is here with you.');
+    if (npcLine) lines.push(npcLine);
+    if (npcSpeakingFor) lines.push(`${npcSpeakingFor} is here and will answer for themselves — narrate the scene and action, but don't put words in ${npcSpeakingFor}'s mouth.`);
     return lines.join('\n');
 }
 
@@ -32,7 +35,7 @@ export function buildCanonBlock({ outputs, status, ranCommands, injectStateOnRp,
  * ({{char}}) grounds in their own room and must not narrate {{user}}'s actions.
  * @param {{companionRoom:string, companionScene:string, playerLocation:string, playerDir?:string|null, companionDir?:string|null, playerShouted?:boolean, shoutDir?:string|null}} args
  */
-export function buildApartCanonBlock({ companionRoom, companionScene, playerLocation, playerDir, companionDir, playerShouted, shoutDir }) {
+export function buildApartCanonBlock({ companionRoom, companionScene, playerLocation, playerDir, companionDir, playerShouted, shoutDir, npcLine }) {
     const header = playerShouted
         ? '[GAME — IMPORTANT. {{char}} is NOT with {{user}} right now; you are apart, in different places. {{user}}\'s last message is something they do ELSEWHERE — {{char}} cannot see it and must NOT appear in that scene.]'
         : '[GAME — IMPORTANT. {{char}} is NOT with {{user}} right now; you are apart, in different places. {{user}}\'s last message is something they do ELSEWHERE — {{char}} cannot see or hear it and must NOT react to it or appear in that scene.]';
@@ -50,6 +53,7 @@ export function buildApartCanonBlock({ companionRoom, companionScene, playerLoca
             : 'You DO hear {{user}}\'s voice shouting from somewhere beyond this room — you may react to the sound and try to go toward it.');
     }
     lines.push(`You last saw {{user}} moving toward ${playerLocation}; you do not know what they are doing now.`);
+    if (npcLine) lines.push(npcLine);
     lines.push('Write ONLY what {{char}} does alone here, in character. Do not address {{user}} as if present, and do not narrate {{user}}\'s actions.');
     return lines.join('\n');
 }

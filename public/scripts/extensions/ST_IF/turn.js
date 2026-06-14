@@ -1,5 +1,5 @@
 // turn.js — orchestrate one chat turn. Pure: all ST/VM deps injected.
-import { readState, recordTurn, getActiveSnapshot, setCompanion, getCompanionSnapshot, setTogether, readTogether, getFollowQueue, setFollowQueue, setRoomDescription, getRoomDescription, recordMapEdge, setInventoryText, getEdgesForRoom, getExitsForRoom, recordRoom, recordEdge, getGrownRooms, cellOfRoom, roomAtCell, getAnchors, setAnchor, nextAnchorCell } from './state.js';
+import { readState, recordTurn, getActiveSnapshot, setCompanion, getCompanionSnapshot, setTogether, readTogether, getFollowQueue, setFollowQueue, setRoomDescription, getRoomDescription, recordMapEdge, setInventoryText, getEdgesForRoom, getExitsForRoom, recordRoom, recordEdge, getGrownRooms, cellOfRoom, roomAtCell, getAnchors, setAnchor, nextAnchorCell, getNpcs } from './state.js';
 import { dirToRoom } from './exits.js';
 import { translate as translateDefault } from './translator.js';
 import { extractMoves, zone, detectShout, validateAction } from './companion.js';
@@ -7,6 +7,7 @@ import { buildCanonBlock, buildApartCanonBlock } from './canon.js';
 import { compactInventory } from './clean.js';
 import { parseRoomJson, sanitizeRoom, buildMetaCommands, blockedMove, directionSuggested, addCell, validateConnections } from './worldgen.js';
 import { reverseDir } from './worldmap.js';
+import { presentNpcs, npcCanonLine, addressedNpc } from './npc.js';
 
 const SKIP_TYPES = new Set(['quiet', 'impersonate']);
 
@@ -148,6 +149,16 @@ export async function runTurn(deps, chat, type) {
     }
 
     const status = vm.getStatus();
+
+    // NPCs present in the player's room: name them in canon (narrator voices them).
+    // A present, card-bound NPC the player addresses speaks for itself after the
+    // narrator turn — stash it for index.js to fire on GENERATION_ENDED.
+    const present = presentNpcs(getNpcs(metadata), status.location);
+    const npcLine = npcCanonLine(present);
+    const npcSpeaker = addressedNpc(player.text, present);
+    readState(metadata).pendingNpcSpeak = npcSpeaker
+        ? { npc: npcSpeaker, playerText: player.text, room: status.location }
+        : null;
 
     // Capture the current room description for the persistent display:
     // update on a room change (the move output IS the new room) or an explicit look.
@@ -322,7 +333,7 @@ export async function runTurn(deps, chat, type) {
 
         if (together) {
             const statusForCanon = companionActionCmd ? vm.getStatus() : status;
-            const block = buildCanonBlock({ outputs, status: statusForCanon, ranCommands: cmds.length > 0, injectStateOnRp: settings.injectStateOnRp, companionPresent: true, companionActionCmd });
+            const block = buildCanonBlock({ outputs, status: statusForCanon, ranCommands: cmds.length > 0, injectStateOnRp: settings.injectStateOnRp, companionPresent: true, companionActionCmd, npcLine, npcSpeakingFor: npcSpeaker?.name ?? null });
             if (block) setPrompt(block);
         } else {
             const playerShouted = detectShout(player.text);
@@ -348,6 +359,7 @@ export async function runTurn(deps, chat, type) {
                 companionDir,
                 playerShouted,
                 shoutDir,
+                npcLine,
             });
             setPrompt(block);
             if (deps.onNarratePlayerRoom) {
@@ -364,6 +376,8 @@ export async function runTurn(deps, chat, type) {
         status,
         ranCommands: cmds.length > 0,
         injectStateOnRp: settings.injectStateOnRp,
+        npcLine,
+        npcSpeakingFor: npcSpeaker?.name ?? null,
     });
     if (block) setPrompt(block);
     if (deps.debugLog && cmds.length) deps.debugLog({ outputs, status, cmds });
