@@ -1,5 +1,5 @@
 // turn.js — orchestrate one chat turn. Pure: all ST/VM deps injected.
-import { readState, recordTurn, getActiveSnapshot, setCompanion, getCompanionSnapshot, setTogether, readTogether, getFollowQueue, setFollowQueue, setRoomDescription, getRoomDescription, recordMapEdge, setInventoryText, getEdgesForRoom, getExitsForRoom, recordRoom, recordEdge, getGrownRooms, cellOfRoom, roomAtCell, getAnchors, setAnchor, nextAnchorCell, getNpcs, getQuests, getMode } from './state.js';
+import { readState, recordTurn, getActiveSnapshot, setCompanion, getCompanionSnapshot, setTogether, readTogether, getFollowQueue, setFollowQueue, setRoomDescription, getRoomDescription, recordMapEdge, setInventoryText, getEdgesForRoom, getExitsForRoom, recordRoom, recordEdge, getGrownRooms, cellOfRoom, roomAtCell, getAnchors, setAnchor, nextAnchorCell, getNpcs, setNpcs, getQuests, getMode } from './state.js';
 import { dirToRoom } from './exits.js';
 import { translate as translateDefault } from './translator.js';
 import { extractMoves, zone, detectShout, validateAction } from './companion.js';
@@ -7,7 +7,7 @@ import { buildCanonBlock, buildApartCanonBlock } from './canon.js';
 import { compactInventory } from './clean.js';
 import { parseRoomJson, sanitizeRoom, buildMetaCommands, blockedMove, directionSuggested, addCell, validateConnections } from './worldgen.js';
 import { reverseDir } from './worldmap.js';
-import { presentNpcs, npcCanonLine, addressedNpc } from './npc.js';
+import { presentNpcs, npcCanonLine, addressedNpc, advanceFollowers } from './npc.js';
 import { questsForGiver, questCanonLine } from './quest.js';
 
 const SKIP_TYPES = new Set(['quiet', 'impersonate']);
@@ -152,6 +152,12 @@ export async function runTurn(deps, chat, type) {
     }
 
     const status = vm.getStatus();
+
+    // Following NPCs travel with the player: when the room changed this turn, move
+    // every follower to the new room so they're counted present (and voiced) here.
+    if (status.location !== statusForPrompt.location) {
+        setNpcs(metadata, advanceFollowers(getNpcs(metadata), status.location));
+    }
 
     // NPCs present in the player's room: name them in canon (narrator voices them).
     // A present, card-bound NPC the player addresses speaks for itself after the

@@ -35,3 +35,20 @@ test('effectVerb formats the meta-command', () => {
     assert.equal(effectVerb({ effect: 'take', amount: 3 }), 'xtake 3');
     assert.equal(effectVerb({ effect: 'flag', flag: 'clear' }), 'xflag clear');
 });
+
+test('validateEffect: give an item (safe) — single lowercase token only', () => {
+    assert.deepEqual(validateEffect({ effect: 'give', item: 'key' }, { safety: 'safe' }), { effect: 'give', item: 'key' });
+    assert.equal(validateEffect({ effect: 'give', item: 'Rusty Key' }, { safety: 'safe' }), null);   // spaces/caps
+    assert.equal(validateEffect({ effect: 'give', item: '' }, { safety: 'safe' }), null);
+    assert.equal(validateEffect({ effect: 'give' }, { safety: 'safe' }), null);                       // no item
+});
+
+test('validateEffect: take-item is open-only', () => {
+    assert.equal(validateEffect({ effect: 'take-item', item: 'key' }, { safety: 'safe' }), null);
+    assert.deepEqual(validateEffect({ effect: 'take-item', item: 'key' }, { safety: 'open' }), { effect: 'take-item', item: 'key' });
+});
+
+test('effectVerb formats item verbs', () => {
+    assert.equal(effectVerb({ effect: 'give', item: 'key' }), 'xgive key');
+    assert.equal(effectVerb({ effect: 'take-item', item: 'coin' }), 'xtakeitem coin');
+});

@@ -32,6 +32,32 @@ export function listNpcs(list) {
     return [...(list ?? [])];
 }
 
+/** Derive a single-token address name from a card name (its first word, lowercased + alnum). */
+export function deriveNpcName(cardName) {
+    const first = String(cardName ?? '').trim().split(/\s+/)[0] ?? '';
+    return first.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+/** Move an NPC to a room (pure). Use '(away)' to make them present nowhere. */
+export function moveNpc(list, name, room) {
+    return (list ?? []).map((n) => (n.name === name ? { ...n, room } : n));
+}
+
+/** Set/clear an NPC's follow flag — a follower travels to the player's room each move. */
+export function setFollow(list, name, on) {
+    return (list ?? []).map((n) => {
+        if (n.name !== name) return n;
+        const c = { ...n };
+        if (on) c.follows = true; else delete c.follows;
+        return c;
+    });
+}
+
+/** Move every following NPC to `room` (call when the player changes room). */
+export function advanceFollowers(list, room) {
+    return (list ?? []).map((n) => (n.follows ? { ...n, room } : n));
+}
+
 /** Normalize a room name/slug for matching: lowercase, drop non-alphanumerics, so
  *  a manifest slug ("commonroom") matches the VM's display name ("Common Room"). */
 const roomKey = (s) => String(s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
