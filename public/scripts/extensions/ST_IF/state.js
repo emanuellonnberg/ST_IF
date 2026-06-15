@@ -159,8 +159,8 @@ export function setQuests(metadata, list) {
     s.quests = Array.isArray(list) ? list : [];
 }
 
-/** Narration mode: 'narrate' (faithful play) | 'build' (world-creation). */
-export const MODES = ['narrate', 'build'];
+/** Narration mode: 'narrate' (faithful play) | 'build' (world-creation) | 'gm' (lively, voices minor NPCs). */
+export const MODES = ['narrate', 'build', 'gm'];
 
 export function getMode(metadata) {
     const m = metadata[KEY]?.mode;

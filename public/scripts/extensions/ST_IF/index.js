@@ -20,6 +20,7 @@ import { addNpc, removeNpc, bindCard, moveNpc, setFollow, deriveNpcName, present
 import { parseEffectProposal, validateEffect, effectVerb } from './effects.js';
 import { addQuest, removeQuest, listQuests, resolveCompletion } from './quest.js';
 import { parseManifest, planSeed } from './scenario.js';
+import { buildOpeningBlock } from './canon.js';
 
 const vm = new IFVM();
 const companionVM = new IFVM();
@@ -187,7 +188,7 @@ async function maybeFireEffect({ npc, playerText, room, reply }) {
     let proposal;
     try {
         const raw = await qgen({
-            quietPrompt: `[Game-master check for NPC "${npc.name}" at "${room}". Player said: "${playerText}". ${npc.name} replied: "${String(reply).slice(0, 300)}".${questText} Does this interaction change game state? Respond ONLY JSON: {"effect":"grant"|"take"|"flag"|"give"|"take-item"|"none","amount":<int>,"flag":"<name>","item":"<one lowercase word>","questDone":"<quest id or empty>"}. "give" = the NPC hands the player a physical item (set "item"); "take-item" = the NPC takes one back. Be conservative — "none" unless a reward, payment, item handoff, or quest completion clearly happened.]`,
+            quietPrompt: `[Game-master check for NPC "${npc.name}" at "${room}". Player said: "${playerText}". ${npc.name} replied: "${String(reply).slice(0, 300)}".${questText} Does this interaction change game state? Respond ONLY JSON: {"effect":"grant"|"take"|"flag"|"give"|"take-item"|"none","amount":<int>,"flag":"<name>","item":"<one lowercase word>","questDone":"<quest id or empty>","npcMove":"follow"|"leave"|""}. "give" = the NPC hands the player a physical item (set "item"); "take-item" = the NPC takes one back. "npcMove":"follow" if ${npc.name} agrees/decides to travel with the player, "leave" if they depart, else "". Be conservative — "none"/"" unless it clearly happened.]`,
             responseLength: 60,
             skipWIAN: true,
         });
@@ -223,23 +224,40 @@ async function maybeFireEffect({ npc, playerText, room, reply }) {
                 : `${npc.name} ${eff.effect === 'take' ? 'takes' : 'hands over'} ${eff.amount} gold.`;
         }
     }
-    if (!fired) return;
+    // GM-driven movement of the speaking NPC — registry-level, benign: only the NPC
+    // you're talking to, only follow/leave. Fires alongside or instead of a VM effect.
+    let moveLine = null;
+    const mv = String(proposal.npcMove || '').trim().toLowerCase();
+    if (mv === 'follow') {
+        setNpcs(md, moveNpc(setFollow(getNpcs(md), npc.name, true), npc.name, normalizeRoom(room)));
+        moveLine = `${npc.name} falls into step with you.`;
+    } else if (mv === 'leave' || mv === 'depart') {
+        setNpcs(md, moveNpc(setFollow(getNpcs(md), npc.name, false), npc.name, 'away'));
+        moveLine = `${npc.name} takes their leave.`;
+    }
 
-    const out = vm.applyWorldEdits([fired]);
-    if (/bad|miss|unknown/i.test(out)) return;     // world lacks effects.h / bad verb
-    // Persist the changed VM + tell next turn's canon what happened (with the new gold total).
+    // Apply the VM effect (if any); a world without effects.h rejects it.
+    let total = '';
+    if (fired) {
+        const out = vm.applyWorldEdits([fired]);
+        if (/bad|miss|unknown/i.test(out)) { fired = null; line = null; }   // world lacks effects.h / bad verb
+    }
+    if (!fired && !moveLine) return;
+
     const st = readState(md);
     if (st) {
-        st.snapshot = vm.save();
-        st.summary = vm.getStatus();
-        let total = '';
-        if (/^xgrant\b|^xtake\b/.test(fired)) {   // gold verbs only (not xtakeitem/xgive/xflag)
-            try { const g = vm.query ? vm.query('xgold').trim() : ''; if (/^\d+$/.test(g)) total = ` You now have ${g} gold.`; } catch { /* no economy */ }
+        if (fired) {
+            st.snapshot = vm.save();
+            st.summary = vm.getStatus();
+            if (/^xgrant\b|^xtake\b/.test(fired)) {   // gold verbs only (not xtakeitem/xgive/xflag)
+                try { const g = vm.query ? vm.query('xgold').trim() : ''; if (/^\d+$/.test(g)) total = ` You now have ${g} gold.`; } catch { /* no economy */ }
+            }
+            // An item handoff changed the player's inventory — refresh the HUD's 🎒 now
+            // (this fires on GENERATION_ENDED, between turns, so nothing else will).
+            try { setInventoryText(md, compactInventory(vm.query('inventory'))); } catch { /* no inventory verb */ }
         }
-        st.pendingEffectLine = line + total;
-        // An item handoff changed the player's inventory — refresh the HUD's 🎒 now
-        // (this fires on GENERATION_ENDED, between turns, so nothing else will).
-        try { setInventoryText(md, compactInventory(vm.query('inventory'))); } catch { /* no inventory verb */ }
+        const parts = [fired ? (line + total) : null, moveLine].filter(Boolean);
+        if (parts.length) st.pendingEffectLine = parts.join(' ');
     }
     saveMetadataDebounced();
     renderHud();
@@ -296,7 +314,7 @@ function renderHud() {
     const present = presentNpcs(getNpcs(ctx.chatMetadata), room);
     el.querySelector('#st_if_hud_npc').textContent = present.length ? `· 👤 ${present.map((n) => n.name).join(', ')}` : '';
     const mode = getMode(ctx.chatMetadata);
-    el.querySelector('#st_if_hud_mode').textContent = mode === 'build' ? '· 🛠 build' : '';
+    el.querySelector('#st_if_hud_mode').textContent = mode === 'build' ? '· 🛠 build' : mode === 'gm' ? '· 🎲 gm' : '';
 }
 
 // GENERATION_ENDED also fires for OUR OWN quiet extraction call, which would
@@ -349,7 +367,24 @@ async function applyStoryBytes(name, bytes, id) {
     renderRoomPanel();
     renderHud();
     ensureExitsExtracted();
+    seedOpeningCanon();
     $('#st_if_story_name').text(name);
+}
+
+/**
+ * Ground the narrator's first generation in the real opening scene of a freshly
+ * loaded game, so it opens where the story actually starts instead of guessing.
+ * Sets the canon extension prompt; the first real turn overwrites it.
+ */
+function seedOpeningCanon() {
+    try {
+        const ctx = getContext();
+        const s = readState(ctx.chatMetadata);
+        if (!s || (s.history && s.history.length)) return;   // only before the first turn
+        const intro = getRoomDescription(ctx.chatMetadata) || vm.getIntro();
+        const block = buildOpeningBlock(intro, vm.getStatus());
+        setExtensionPrompt(KEY, block, extension_prompt_types.IN_CHAT, getSettings().depth, false, extension_prompt_roles.SYSTEM);
+    } catch (e) { console.warn('[ST_IF] opening seed failed', e); }
 }
 
 /** Trigger a browser download of `text` as `filename`. */
@@ -530,6 +565,7 @@ async function ensureStoryLoaded() {
     renderRoomPanel();
     renderHud();
     ensureExitsExtracted();
+    seedOpeningCanon();
 }
 
 /** /if-cmd advances the VM outside the turn pipeline; persist the new snapshot. */
@@ -693,8 +729,8 @@ function registerSlashCommands() {
 
     SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         name: 'if-mode',
-        helpString: 'Narration mode: \'narrate\' (faithful play) or \'build\' (let the narrator extend the world at its edges). No argument reports the current mode. Persists with this chat.',
-        unnamedArgumentList: [new SlashCommandArgument('narrate | build', [ARGUMENT_TYPE.STRING], false, false, '')],
+        helpString: 'Narration mode: \'narrate\' (faithful play), \'build\' (extend the world at its edges), or \'gm\' (lively — voices minor NPCs, drives pacing). No argument reports the current mode. Persists with this chat.',
+        unnamedArgumentList: [new SlashCommandArgument('narrate | build | gm', [ARGUMENT_TYPE.STRING], false, false, '')],
         returns: ARGUMENT_TYPE.STRING,
         callback: async (_args, value) => {
             const md = getContext().chatMetadata;
@@ -711,6 +747,7 @@ function registerSlashCommands() {
                     ? 'Mode: build — the narrator may now invent new rooms/objects/exits at the edges of the world.'
                     : 'Mode: build set — but THIS world is not expandable, so new rooms cannot persist; it behaves like narrate here. Load an expandable world for world-building.';
             }
+            if (want === 'gm') return 'Mode: gm — lively play: the narrator voices minor background NPCs and drives pacing/hooks (registered card NPCs still speak for themselves).';
             return 'Mode: narrate — faithful play; the narrator describes only what exists.';
         },
     }));

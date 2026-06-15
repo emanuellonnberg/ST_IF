@@ -44,7 +44,8 @@ export async function runTurn(deps, chat, type) {
     // grow; in a non-expandable world it would invite the narrator to hallucinate
     // untracked rooms, so the canon directive falls back to narrate there.
     const expandable = typeof vm.isExpandable === 'function' && vm.isExpandable();
-    const canonMode = (mode === 'build' && expandable) ? 'build' : 'narrate';
+    let canonMode = mode;
+    if (mode === 'build' && !expandable) canonMode = 'narrate';   // build needs an expandable world; gm/narrate pass through
     const lastTurn = state.history[state.history.length - 1];
 
     // 2. SWIPE / regen on the same message → reuse cached commands, do not re-step.

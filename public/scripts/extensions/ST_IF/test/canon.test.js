@@ -1,9 +1,18 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildCanonBlock, modeDirective } from '../canon.js';
+import { buildCanonBlock, modeDirective, buildOpeningBlock } from '../canon.js';
 
-test('modeDirective: build adds a world-extend directive; narrate adds nothing', () => {
+test('buildOpeningBlock grounds the first message in the opening scene', () => {
+    const b = buildOpeningBlock('You stand in a smoky tavern.', { location: 'Common Room', score: 0, moves: 0 });
+    assert.match(b, /opening scene/i);
+    assert.match(b, /smoky tavern/);
+    assert.match(b, /Common Room/);
+    assert.match(buildOpeningBlock('', { location: 'Void', score: null, moves: null }), /Void/);   // tolerates no intro
+});
+
+test('modeDirective: build/gm add directives; narrate adds nothing', () => {
     assert.match(modeDirective('build'), /World-building mode/);
+    assert.match(modeDirective('gm'), /Game-master mode/);
     assert.equal(modeDirective('narrate'), '');
     assert.equal(modeDirective(undefined), '');
 });

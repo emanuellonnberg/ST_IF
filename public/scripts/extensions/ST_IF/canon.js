@@ -11,6 +11,9 @@ export function modeDirective(mode) {
     if (mode === 'build') {
         return 'World-building mode: when the scene reaches an edge of the known world, you may introduce new rooms, objects, and exits that fit the established setting and tone. Name each new place in one word, and mention one or two concrete onward exits so it can persist and connect. Never contradict or rewrite places that already exist.';
     }
+    if (mode === 'gm') {
+        return 'Game-master mode: besides narrating faithfully, briefly voice the minor background characters present — give them a line or a reaction when it fits — and you may introduce small incidental figures the scene calls for. Keep any named, registered character to their own voice; do not speak for them. Drive the pacing: surface hooks, consequences, and what could happen next.';
+    }
     return '';
 }
 
@@ -45,6 +48,21 @@ export function buildCanonBlock({ outputs, status, ranCommands, injectStateOnRp,
     if (npcSpeakingFor) lines.push(`${npcSpeakingFor} is here and will answer for themselves — narrate the scene and action, but don't put words in ${npcSpeakingFor}'s mouth.`);
     if (questLine) lines.push(questLine);
     if (effectLine) lines.push(effectLine);
+    return lines.join('\n');
+}
+
+/**
+ * Canon for the very first message of a fresh game: ground the narrator in the
+ * opening scene/room so it opens where the story actually starts (not a guess).
+ * @param {string} introText the VM's opening scene / starting-room text
+ * @param {{location:string, score:number|null, moves:number|null}} status
+ * @returns {string}
+ */
+export function buildOpeningBlock(introText, status) {
+    const intro = String(introText ?? '').trim();
+    const lines = ['[GAME — opening scene; ground truth. The story begins now, in this place: open the scene here, honoring these details. Do not relocate the player or invent a different starting point.]'];
+    if (intro) lines.push(intro);
+    lines.push(statusLine(status));
     return lines.join('\n');
 }
 

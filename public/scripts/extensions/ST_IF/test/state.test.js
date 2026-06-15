@@ -18,8 +18,10 @@ test('getMode/setMode round-trips a valid mode; defaults + rejects junk', () => 
     assert.equal(getMode(md), 'narrate');
     setMode(md, 'build');
     assert.equal(getMode(md), 'build');
-    assert.deepEqual(MODES, ['narrate', 'build']);
-    assert.throws(() => setMode(md, 'gm'), /unknown mode/);
+    setMode(md, 'gm');
+    assert.equal(getMode(md), 'gm');
+    assert.deepEqual(MODES, ['narrate', 'build', 'gm']);
+    assert.throws(() => setMode(md, 'wander'), /unknown mode/);
     // a legacy record without a mode field reads as 'narrate'
     delete readState(md).mode;
     assert.equal(getMode(md), 'narrate');

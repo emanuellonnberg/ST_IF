@@ -51,7 +51,9 @@ hands you a `key`). Requires NPC effects enabled; `give` needs `safe`, `take-ite
 Registry NPCs can also **move**. `/if-npc move <name> <room>` relocates one (room `away` hides
 them everywhere); `/if-npc follow <name>` makes an NPC travel to your room on every move
 (`/if-npc follow <name> off` stops it). Followers are counted present — and voiced — wherever
-you go.
+you go. With NPC effects on, the game-master check can also drive this: an NPC you're talking to
+may decide to **follow** or **leave** on its own (`npcMove`), so the narrator can have a companion
+join or slip away in-fiction.
 
 **Quickest add:** stand in the room and `/if-npc here Tomas the Barkeep` — drops that card into
 your current room, bound, with the address-name auto-derived from the card (its first word, e.g.
@@ -90,6 +92,12 @@ ST_IF narrates through whatever character card is active plus an injected `[GAME
   demos); in a fixed world like the tavern the build directive is suppressed (it would invite the
   narrator to invent rooms the VM can't track), so it behaves like `narrate` and `/if-mode build`
   says as much.
+- `gm` — lively play: besides faithful narration the narrator briefly voices the minor background
+  characters present and drives pacing/hooks (registered card NPCs still speak for themselves).
+  HUD badge `🎲 gm`. Works in any world.
+
+On a freshly loaded game the narrator's first message is grounded in the real **opening scene**
+(the VM's starting room), so it opens where the story actually starts instead of guessing.
 
 `cards/narrator.png` ("The Storyteller") is a neutral, CC0 narrator card tuned for this contract
 — load it for clean ground-truth narration, or use any character card for flavoured narration.
