@@ -32,10 +32,17 @@ export function listNpcs(list) {
     return [...(list ?? [])];
 }
 
-/** Derive a single-token address name from a card name (its first word, lowercased + alnum). */
+// Leading titles/honorifics/adjectives to skip when deriving an address name.
+const NAME_STOPWORDS = new Set(['the', 'a', 'an', 'old', 'young', 'sir', 'lady', 'lord', 'dame',
+    'mr', 'mrs', 'ms', 'dr', 'master', 'mistress', 'captain', 'sergeant', 'general', 'king', 'queen',
+    'prince', 'princess', 'brother', 'sister', 'father', 'mother', 'saint', 'st', 'big', 'little']);
+
+/** Derive a single-token address name from a card name: the first non-title word, lowercased + alnum. */
 export function deriveNpcName(cardName) {
-    const first = String(cardName ?? '').trim().split(/\s+/)[0] ?? '';
-    return first.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const words = String(cardName ?? '').trim().split(/\s+/)
+        .map((w) => w.toLowerCase().replace(/[^a-z0-9]/g, ''))
+        .filter(Boolean);
+    return words.find((w) => !NAME_STOPWORDS.has(w)) ?? words[0] ?? '';
 }
 
 /** Move an NPC to a room (pure). Use '(away)' to make them present nowhere. */
@@ -55,17 +62,20 @@ export function setFollow(list, name, on) {
 
 /** Move every following NPC to `room` (call when the player changes room). */
 export function advanceFollowers(list, room) {
-    return (list ?? []).map((n) => (n.follows ? { ...n, room } : n));
+    const r = normalizeRoom(room);
+    return (list ?? []).map((n) => (n.follows ? { ...n, room: r } : n));
 }
 
-/** Normalize a room name/slug for matching: lowercase, drop non-alphanumerics, so
- *  a manifest slug ("commonroom") matches the VM's display name ("Common Room"). */
-const roomKey = (s) => String(s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+/** Normalize a room name/slug for matching + storage: lowercase, drop non-alphanumerics,
+ *  so a manifest slug ("commonroom") matches the VM's display name ("Common Room"). */
+export function normalizeRoom(s) {
+    return String(s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
 
 /** NPCs whose room matches the player's current room (slug/display-name-insensitive). */
 export function presentNpcs(list, roomSlug) {
-    const r = roomKey(roomSlug);
-    return (list ?? []).filter((n) => roomKey(n.room) === r);
+    const r = normalizeRoom(roomSlug);
+    return (list ?? []).filter((n) => normalizeRoom(n.room) === r);
 }
 
 /** Canon line naming the NPCs present in the room, or '' if none. */

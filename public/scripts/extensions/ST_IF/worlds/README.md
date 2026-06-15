@@ -86,7 +86,10 @@ ST_IF narrates through whatever character card is active plus an injected `[GAME
 - `narrate` (default) — faithful play: describe only what the engine reports; invent nothing.
 - `build` — world-creation: at the edges of the known world the narrator may introduce new
   rooms/objects/exits that fit the setting (implies dynamic-world growth for this chat). The HUD
-  shows a `🛠 build` badge while active.
+  shows a `🛠 build` badge while active. **Only effective in an expandable world** (the `*-expanse`
+  demos); in a fixed world like the tavern the build directive is suppressed (it would invite the
+  narrator to invent rooms the VM can't track), so it behaves like `narrate` and `/if-mode build`
+  says as much.
 
 `cards/narrator.png` ("The Storyteller") is a neutral, CC0 narrator card tuned for this contract
 — load it for clean ground-truth narration, or use any character card for flavoured narration.

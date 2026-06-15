@@ -40,6 +40,11 @@ export async function runTurn(deps, chat, type) {
 
     const state = readState(metadata);
     const mode = getMode(metadata);   // 'narrate' | 'build'
+    // Build mode earns its "invent new rooms" directive only where the VM can actually
+    // grow; in a non-expandable world it would invite the narrator to hallucinate
+    // untracked rooms, so the canon directive falls back to narrate there.
+    const expandable = typeof vm.isExpandable === 'function' && vm.isExpandable();
+    const canonMode = (mode === 'build' && expandable) ? 'build' : 'narrate';
     const lastTurn = state.history[state.history.length - 1];
 
     // 2. SWIPE / regen on the same message → reuse cached commands, do not re-step.
@@ -52,7 +57,7 @@ export async function runTurn(deps, chat, type) {
             ranCommands: (lastTurn.cmds ?? []).length > 0,
             injectStateOnRp: settings.injectStateOnRp,
             companionActionCmd: lastTurn.companionCmd ?? null,
-            mode,
+            mode: canonMode,
         });
         if (block) setPrompt(block);
         // Swipes rebuild fresh prompt copies: if the pair is apart, hide the
@@ -348,7 +353,7 @@ export async function runTurn(deps, chat, type) {
 
         if (together) {
             const statusForCanon = companionActionCmd ? vm.getStatus() : status;
-            const block = buildCanonBlock({ outputs, status: statusForCanon, ranCommands: cmds.length > 0, injectStateOnRp: settings.injectStateOnRp, companionPresent: true, companionActionCmd, npcLine, npcSpeakingFor: npcSpeaker?.name ?? null, questLine, effectLine, mode });
+            const block = buildCanonBlock({ outputs, status: statusForCanon, ranCommands: cmds.length > 0, injectStateOnRp: settings.injectStateOnRp, companionPresent: true, companionActionCmd, npcLine, npcSpeakingFor: npcSpeaker?.name ?? null, questLine, effectLine, mode: canonMode });
             if (block) setPrompt(block);
         } else {
             const playerShouted = detectShout(player.text);
@@ -395,7 +400,7 @@ export async function runTurn(deps, chat, type) {
         npcSpeakingFor: npcSpeaker?.name ?? null,
         questLine,
         effectLine,
-        mode,
+        mode: canonMode,
     });
     if (block) setPrompt(block);
     if (deps.debugLog && cmds.length) deps.debugLog({ outputs, status, cmds });
