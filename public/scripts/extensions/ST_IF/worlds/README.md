@@ -59,6 +59,13 @@ join or slip away in-fiction.
 your current room, bound, with the address-name auto-derived from the card (its first word, e.g.
 `tomas`). The full card name stays as the display/voice; you just address them as `tomas`.
 
+**Physical interaction.** A present registry NPC is also given a real Z-machine **body** each turn
+(`effects.h` NPC pool), so the parser can act on them: `examine maeve`, `give key to maeve`,
+`show coin to tomas`. Items you give really transfer to the NPC (and stay with them even when they
+leave the room). Dialogue still flows through the card (the body is just the handle); combat is not
+modelled. The engine's `x*` verbs are all `meta`, so this per-turn materialisation never advances
+the world clock (cooking timers etc. are safe).
+
 ## Scenario manifests (one-step setup)
 
 A bundled world may ship a sidecar `<basename>.world.json` that auto-seeds its NPCs, quests,

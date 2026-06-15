@@ -7,7 +7,7 @@ import { buildCanonBlock, buildApartCanonBlock } from './canon.js';
 import { compactInventory } from './clean.js';
 import { parseRoomJson, sanitizeRoom, buildMetaCommands, blockedMove, directionSuggested, addCell, validateConnections } from './worldgen.js';
 import { reverseDir } from './worldmap.js';
-import { presentNpcs, npcCanonLine, addressedNpc, advanceFollowers } from './npc.js';
+import { presentNpcs, npcCanonLine, addressedNpc, advanceFollowers, npcBodyCommands } from './npc.js';
 import { questsForGiver, questCanonLine } from './quest.js';
 
 const SKIP_TYPES = new Set(['quiet', 'impersonate']);
@@ -81,6 +81,14 @@ export async function runTurn(deps, chat, type) {
 
     // 4. TRANSLATE.
     const statusForPrompt = vm.getStatus();
+
+    // Materialize present NPCs as real bodies in this room (meta verbs → no clock
+    // advance) so the player's commands can act on them physically (give/show/examine).
+    if (typeof vm.applyWorldEdits === 'function') {
+        const sync = npcBodyCommands(getNpcs(metadata), statusForPrompt.location);
+        if (sync.length) vm.applyWorldEdits(sync);
+    }
+
     const cmds = await translate(player.text, statusForPrompt, settings.strictness);
 
     // 5. STEP VM — collecting the commands that actually changed the player's room
