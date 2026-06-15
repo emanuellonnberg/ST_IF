@@ -1,13 +1,22 @@
 // Unit tests for npc.js — pure NPC registry + co-location + addressed detection.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addNpc, removeNpc, bindCard, listNpcs, presentNpcs, npcCanonLine, addressedNpc, moveNpc, setFollow, advanceFollowers, deriveNpcName } from '../npc.js';
+import { addNpc, removeNpc, bindCard, listNpcs, presentNpcs, npcCanonLine, addressedNpc, moveNpc, setFollow, advanceFollowers, deriveNpcName, normalizeRoom } from '../npc.js';
 
-test('deriveNpcName takes the first word, lowercased + alnum', () => {
+test('deriveNpcName picks the first non-title word, lowercased + alnum', () => {
     assert.equal(deriveNpcName('Tomas the Barkeep'), 'tomas');
-    assert.equal(deriveNpcName('Old Maeve'), 'old');
+    assert.equal(deriveNpcName('Old Maeve'), 'maeve');          // skips the adjective
+    assert.equal(deriveNpcName('Sir Gawain'), 'gawain');        // skips the title
+    assert.equal(deriveNpcName('The Storyteller'), 'storyteller');
     assert.equal(deriveNpcName("D'Artagnan, Guard"), 'dartagnan');
+    assert.equal(deriveNpcName('Old'), 'old');                  // all-title -> fall back to first
     assert.equal(deriveNpcName(''), '');
+});
+
+test('normalizeRoom collapses to a comparable slug', () => {
+    assert.equal(normalizeRoom('Common Room'), 'commonroom');
+    assert.equal(normalizeRoom('taproom'), 'taproom');
+    assert.equal(normalizeRoom('away'), 'away');
 });
 
 test('addNpc adds and replaces by name', () => {
@@ -60,12 +69,12 @@ test('setFollow + advanceFollowers: a follower travels to the player room, off s
     l = setFollow(l, 'maeve', true);
     assert.equal(l.find((n) => n.name === 'maeve').follows, true);
     l = advanceFollowers(l, 'Cellar');                     // player moved to the Cellar
-    assert.equal(l.find((n) => n.name === 'maeve').room, 'Cellar');
+    assert.equal(l.find((n) => n.name === 'maeve').room, 'cellar');    // stored normalized
     assert.equal(l.find((n) => n.name === 'tomas').room, 'taproom');   // non-follower stays
     l = setFollow(l, 'maeve', false);
     assert.equal(l.find((n) => n.name === 'maeve').follows, undefined);
     l = advanceFollowers(l, 'Kitchen');
-    assert.equal(l.find((n) => n.name === 'maeve').room, 'Cellar');    // no longer follows
+    assert.equal(l.find((n) => n.name === 'maeve').room, 'cellar');    // no longer follows
 });
 
 test('npcCanonLine lists present NPCs, or empty', () => {

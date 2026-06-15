@@ -11,12 +11,12 @@ import { IFVM } from './vm.js';
 import { translate } from './translator.js';
 import { decideMove, decideAgency, decideUse } from './companion.js';
 import { runTurn } from './turn.js';
-import { readState, initState, getActiveSnapshot, rewindTo, KEY, setCompanion, getCompanionSnapshot, getRoomDescription, setRoomDescription, getInventoryText, getExitsForRoom, setExitsForRoom, getEdgesForRoom, readTogether, getWorldGraph, recordRoom, recordEdge, setAnchor, getNpcs, setNpcs, getQuests, setQuests, getMode, setMode, MODES } from './state.js';
+import { readState, initState, getActiveSnapshot, rewindTo, KEY, setCompanion, getCompanionSnapshot, getRoomDescription, setRoomDescription, getInventoryText, setInventoryText, getExitsForRoom, setExitsForRoom, getEdgesForRoom, readTogether, getWorldGraph, recordRoom, recordEdge, setAnchor, getNpcs, setNpcs, getQuests, setQuests, getMode, setMode, MODES } from './state.js';
 import { loadSettings, getSettings, wireSettingsUI, base64ToBytes, bytesToBase64 } from './settings.js';
-import { stripReasoning } from './clean.js';
+import { stripReasoning, compactInventory } from './clean.js';
 import { extractExits, mergeExits, formatExitsLine } from './exits.js';
 import { formatMap, planReplay, upconvertV1 } from './worldmap.js';
-import { addNpc, removeNpc, bindCard, moveNpc, setFollow, deriveNpcName } from './npc.js';
+import { addNpc, removeNpc, bindCard, moveNpc, setFollow, deriveNpcName, presentNpcs, normalizeRoom } from './npc.js';
 import { parseEffectProposal, validateEffect, effectVerb } from './effects.js';
 import { addQuest, removeQuest, listQuests, resolveCompletion } from './quest.js';
 import { parseManifest, planSeed } from './scenario.js';
@@ -76,7 +76,20 @@ function buildDeps() {
         onNpcSpeak: async ({ npc, playerText, room }) => {
             const ctx = getContext();
             const card = (ctx.characters || []).find((c) => c.name === npc.card || c.avatar === npc.card);
-            if (!card) { console.warn('[ST_IF] NPC card not found:', npc.card); return; }   // Tier-1 fallback
+            if (!card) {
+                // Bound card not in the character list: don't go silent — voice the NPC
+                // lightly from its blurb so the scene keeps moving (no avatar).
+                console.warn('[ST_IF] NPC card not found, voicing from blurb:', npc.card);
+                const persona = npc.blurb || `a figure known as ${npc.name}`;
+                try {
+                    const r = await qgen({
+                        quietPrompt: `[You are ${npc.name}, ${persona}. You are at "${room}". The player said: "${playerText}". Reply in character as ${npc.name} — 1-3 lines of dialogue and small action. Do not narrate the player or the wider scene.]`,
+                        responseLength: 160, skipWIAN: true,
+                    });
+                    postNpcMessage({ name: npc.name }, stripReasoning(r));
+                } catch (e) { console.error('[ST_IF] NPC blurb fallback failed', e); }
+                return;
+            }
             const persona = [card.description, card.personality].filter(Boolean).join(' ').replace(/\s+/g, ' ').slice(0, 1200);
             let reply;
             try {
@@ -224,6 +237,9 @@ async function maybeFireEffect({ npc, playerText, room, reply }) {
             try { const g = vm.query ? vm.query('xgold').trim() : ''; if (/^\d+$/.test(g)) total = ` You now have ${g} gold.`; } catch { /* no economy */ }
         }
         st.pendingEffectLine = line + total;
+        // An item handoff changed the player's inventory — refresh the HUD's 🎒 now
+        // (this fires on GENERATION_ENDED, between turns, so nothing else will).
+        try { setInventoryText(md, compactInventory(vm.query('inventory'))); } catch { /* no inventory verb */ }
     }
     saveMetadataDebounced();
     renderHud();
@@ -257,6 +273,7 @@ function renderHud() {
             '<span class="st_if_hud_seg" id="st_if_hud_exits"></span>' +
             '<span class="st_if_hud_seg" id="st_if_hud_inv"></span>' +
             '<span class="st_if_hud_seg" id="st_if_hud_comp"></span>' +
+            '<span class="st_if_hud_seg" id="st_if_hud_npc"></span>' +
             '<span class="st_if_hud_seg" id="st_if_hud_mode"></span>';
         form.parentElement.insertBefore(el, form);
         el.querySelector('.st_if_hud_pin').addEventListener('click', () => el.classList.toggle('st_if_collapsed'));
@@ -276,6 +293,8 @@ function renderHud() {
     const compRoom = s.companion?.summary?.location;
     const apart = cfg?.companionTracking && compRoom && !readTogether(ctx.chatMetadata);
     el.querySelector('#st_if_hud_comp').textContent = apart ? `· 👥 ${compRoom}` : '';
+    const present = presentNpcs(getNpcs(ctx.chatMetadata), room);
+    el.querySelector('#st_if_hud_npc').textContent = present.length ? `· 👤 ${present.map((n) => n.name).join(', ')}` : '';
     const mode = getMode(ctx.chatMetadata);
     el.querySelector('#st_if_hud_mode').textContent = mode === 'build' ? '· 🛠 build' : '';
 }
@@ -563,9 +582,9 @@ function registerSlashCommands() {
             if (sub === 'add') {
                 const m = rest.match(/^(\S+)\s*@\s*(\S+)\s*:?\s*(.*)$/);
                 if (!m) return 'Usage: /if-npc add <name> @ <room> : <blurb>';
-                list = addNpc(list, { name: m[1].toLowerCase(), room: m[2].toLowerCase(), blurb: m[3] || '' });
+                list = addNpc(list, { name: m[1].toLowerCase(), room: normalizeRoom(m[2]), blurb: m[3] || '' });
                 setNpcs(md, list); saveMetadataDebounced();
-                return `Added NPC "${m[1].toLowerCase()}" in ${m[2].toLowerCase()}.`;
+                return `Added NPC "${m[1].toLowerCase()}" in ${normalizeRoom(m[2])}.`;
             }
             if (sub === 'here') {
                 // Shortcut: drop a character card into the CURRENT room, bound, with an
@@ -576,7 +595,7 @@ function registerSlashCommands() {
                 const name = deriveNpcName(cardName);
                 if (!name) return 'Could not derive an address name from that card.';
                 const loc = vm.getStatus().location;
-                const room = String(loc).toLowerCase().replace(/[^a-z0-9]/g, '');
+                const room = normalizeRoom(loc);
                 const card = (getContext().characters || []).find((c) => c.name === cardName);
                 const blurb = card ? [card.description, card.personality].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim().slice(0, 80) : '';
                 list = bindCard(addNpc(list, { name, room, blurb }), name, cardName);
@@ -599,9 +618,9 @@ function registerSlashCommands() {
             if (sub === 'move') {
                 const m = rest.match(/^(\S+)\s+(.+)$/);
                 if (!m) return 'Usage: /if-npc move <name> <room>   (room "away" = present nowhere)';
-                list = moveNpc(list, m[1].toLowerCase(), m[2].trim().toLowerCase());
+                list = moveNpc(list, m[1].toLowerCase(), normalizeRoom(m[2]));
                 setNpcs(md, list); saveMetadataDebounced(); renderHud();
-                return `Moved "${m[1].toLowerCase()}" to ${m[2].trim().toLowerCase()}.`;
+                return `Moved "${m[1].toLowerCase()}" to ${normalizeRoom(m[2])}.`;
             }
             if (sub === 'follow') {
                 const m = rest.match(/^(\S+)(?:\s+(off|stop|no))?\s*$/i);
@@ -686,9 +705,13 @@ function registerSlashCommands() {
             setMode(md, want);
             saveMetadataDebounced();
             renderHud();
-            return want === 'build'
-                ? 'Mode: build — the narrator may now invent new rooms/objects/exits at the edges of the world.'
-                : 'Mode: narrate — faithful play; the narrator describes only what exists.';
+            if (want === 'build') {
+                const canGrow = vm.loaded && typeof vm.isExpandable === 'function' && vm.isExpandable();
+                return canGrow
+                    ? 'Mode: build — the narrator may now invent new rooms/objects/exits at the edges of the world.'
+                    : 'Mode: build set — but THIS world is not expandable, so new rooms cannot persist; it behaves like narrate here. Load an expandable world for world-building.';
+            }
+            return 'Mode: narrate — faithful play; the narrator describes only what exists.';
         },
     }));
 
