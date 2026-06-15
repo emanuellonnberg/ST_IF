@@ -40,6 +40,23 @@ room + portable light, a switchable lamp, and takeable objects.
   the barkeep then pays the bounded reward (the LLM proposes, the engine validates, the VM
   grants real gold).
 
+## NPC items & movement
+
+`effects.h` also gives NPCs a **giveable-item pool**: when an exchange warrants it the
+game-master check can fire `give`/`take-item`, and the engine mints a **real Z-machine
+object** into your hands (`xgive <word>`) — examinable, carryable, droppable — or removes one
+you hold (`xtakeitem <word>`). Item names are a single lowercase token (e.g. the barkeep
+hands you a `key`). Requires NPC effects enabled; `give` needs `safe`, `take-item` needs `open`.
+
+Registry NPCs can also **move**. `/if-npc move <name> <room>` relocates one (room `away` hides
+them everywhere); `/if-npc follow <name>` makes an NPC travel to your room on every move
+(`/if-npc follow <name> off` stops it). Followers are counted present — and voiced — wherever
+you go.
+
+**Quickest add:** stand in the room and `/if-npc here Tomas the Barkeep` — drops that card into
+your current room, bound, with the address-name auto-derived from the card (its first word, e.g.
+`tomas`). The full card name stays as the display/voice; you just address them as `tomas`.
+
 ## Scenario manifests (one-step setup)
 
 A bundled world may ship a sidecar `<basename>.world.json` that auto-seeds its NPCs, quests,

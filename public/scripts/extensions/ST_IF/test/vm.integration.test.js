@@ -585,6 +585,18 @@ test('tavern: "light lantern" lights it (translator emits light/use, never switc
     assert.match(vm.step('use lantern'), /flares to life/i); // "use X" also switches a switchable on
 });
 
+test('effects: xgive mints a real held item; xtakeitem removes it (effects.h item pool)', async () => {
+    const vm = new IFVM(); await vm.load(tavern);
+    assert.match(vm.step('xgive key'), /xgive ok/);
+    assert.match(vm.step('examine key'), /ordinary key/i);    // real, examinable Z-machine object
+    assert.match(vm.query('inventory'), /key/);               // actually carried
+    assert.match(vm.step('drop key'), /Dropped/i);            // behaves like any object
+    assert.match(vm.step('take key'), /Taken/i);
+    assert.match(vm.step('xtakeitem key'), /xtakeitem ok/);
+    assert.doesNotMatch(vm.query('inventory'), /key/);        // removed
+    assert.match(vm.step('xtakeitem key'), /xtakeitem none/); // slot freed, nothing left to take
+});
+
 // --- Expandable authored world (apartment frontier) ------------------------
 const apartmentExp = new Uint8Array(readFileSync(new URL('../worlds/apartment-expanse.z5', import.meta.url)));
 

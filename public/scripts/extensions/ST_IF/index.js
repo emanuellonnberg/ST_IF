@@ -16,7 +16,7 @@ import { loadSettings, getSettings, wireSettingsUI, base64ToBytes, bytesToBase64
 import { stripReasoning } from './clean.js';
 import { extractExits, mergeExits, formatExitsLine } from './exits.js';
 import { formatMap, planReplay, upconvertV1 } from './worldmap.js';
-import { addNpc, removeNpc, bindCard } from './npc.js';
+import { addNpc, removeNpc, bindCard, moveNpc, setFollow, deriveNpcName } from './npc.js';
 import { parseEffectProposal, validateEffect, effectVerb } from './effects.js';
 import { addQuest, removeQuest, listQuests, resolveCompletion } from './quest.js';
 import { parseManifest, planSeed } from './scenario.js';
@@ -174,7 +174,7 @@ async function maybeFireEffect({ npc, playerText, room, reply }) {
     let proposal;
     try {
         const raw = await qgen({
-            quietPrompt: `[Game-master check for NPC "${npc.name}" at "${room}". Player said: "${playerText}". ${npc.name} replied: "${String(reply).slice(0, 300)}".${questText} Does this interaction change game state? Respond ONLY JSON: {"effect":"grant"|"take"|"flag"|"none","amount":<int>,"flag":"<name>","questDone":"<quest id or empty>"}. Be conservative — "none" unless a reward, payment, or quest completion clearly happened.]`,
+            quietPrompt: `[Game-master check for NPC "${npc.name}" at "${room}". Player said: "${playerText}". ${npc.name} replied: "${String(reply).slice(0, 300)}".${questText} Does this interaction change game state? Respond ONLY JSON: {"effect":"grant"|"take"|"flag"|"give"|"take-item"|"none","amount":<int>,"flag":"<name>","item":"<one lowercase word>","questDone":"<quest id or empty>"}. "give" = the NPC hands the player a physical item (set "item"); "take-item" = the NPC takes one back. Be conservative — "none" unless a reward, payment, item handoff, or quest completion clearly happened.]`,
             responseLength: 60,
             skipWIAN: true,
         });
@@ -204,8 +204,9 @@ async function maybeFireEffect({ npc, playerText, room, reply }) {
         const eff = validateEffect(proposal, { safety: s.effectSafety, maxGrant: s.maxGrant });
         if (eff) {
             fired = effectVerb(eff);
-            line = eff.effect === 'flag'
-                ? `(${npc.name} marks "${eff.flag}".)`
+            line = eff.effect === 'flag' ? `(${npc.name} marks "${eff.flag}".)`
+                : eff.effect === 'give' ? `${npc.name} hands you a ${eff.item} — it is yours now.`
+                : eff.effect === 'take-item' ? `${npc.name} takes the ${eff.item} back.`
                 : `${npc.name} ${eff.effect === 'take' ? 'takes' : 'hands over'} ${eff.amount} gold.`;
         }
     }
@@ -219,7 +220,9 @@ async function maybeFireEffect({ npc, playerText, room, reply }) {
         st.snapshot = vm.save();
         st.summary = vm.getStatus();
         let total = '';
-        try { const g = vm.query ? vm.query('xgold').trim() : ''; if (/^\d+$/.test(g)) total = ` You now have ${g} gold.`; } catch { /* no economy */ }
+        if (/^xgrant\b|^xtake\b/.test(fired)) {   // gold verbs only (not xtakeitem/xgive/xflag)
+            try { const g = vm.query ? vm.query('xgold').trim() : ''; if (/^\d+$/.test(g)) total = ` You now have ${g} gold.`; } catch { /* no economy */ }
+        }
         st.pendingEffectLine = line + total;
     }
     saveMetadataDebounced();
@@ -547,7 +550,7 @@ function registerSlashCommands() {
 
     SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         name: 'if-npc',
-        helpString: 'Manage in-world NPCs: add <name> @ <room> : <blurb> | bind <name> <card> | list | remove <name>.',
+        helpString: 'Manage in-world NPCs: here <card name> (drop a card into the current room, auto-named+bound) | add <name> @ <room> : <blurb> | bind <name> <card> | move <name> <room> | follow <name> [off] | list | remove <name>.',
         unnamedArgumentList: [new SlashCommandArgument('subcommand + args', [ARGUMENT_TYPE.STRING], false, false, '')],
         returns: ARGUMENT_TYPE.STRING,
         callback: async (_args, value) => {
@@ -564,6 +567,23 @@ function registerSlashCommands() {
                 setNpcs(md, list); saveMetadataDebounced();
                 return `Added NPC "${m[1].toLowerCase()}" in ${m[2].toLowerCase()}.`;
             }
+            if (sub === 'here') {
+                // Shortcut: drop a character card into the CURRENT room, bound, with an
+                // address-name derived from the card (first word). Display stays the card name.
+                const cardName = rest.trim();
+                if (!cardName) return 'Usage: /if-npc here <card name>   (drops that card into your current room)';
+                if (!vm.loaded) return 'No story loaded.';
+                const name = deriveNpcName(cardName);
+                if (!name) return 'Could not derive an address name from that card.';
+                const loc = vm.getStatus().location;
+                const room = String(loc).toLowerCase().replace(/[^a-z0-9]/g, '');
+                const card = (getContext().characters || []).find((c) => c.name === cardName);
+                const blurb = card ? [card.description, card.personality].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim().slice(0, 80) : '';
+                list = bindCard(addNpc(list, { name, room, blurb }), name, cardName);
+                setNpcs(md, list); saveMetadataDebounced(); renderHud();
+                const warn = card ? '' : ` (card "${cardName}" not in your character list yet — narrator-voiced until imported)`;
+                return `Added "${name}" (card: ${cardName}) in ${loc} — address them as "${name}"${warn}.`;
+            }
             if (sub === 'bind') {
                 const m = rest.match(/^(\S+)\s+(.+)$/);
                 if (!m) return 'Usage: /if-npc bind <name> <card name>   (use - to unbind)';
@@ -576,8 +596,24 @@ function registerSlashCommands() {
                 setNpcs(md, list); saveMetadataDebounced();
                 return `Removed "${rest.toLowerCase()}".`;
             }
+            if (sub === 'move') {
+                const m = rest.match(/^(\S+)\s+(.+)$/);
+                if (!m) return 'Usage: /if-npc move <name> <room>   (room "away" = present nowhere)';
+                list = moveNpc(list, m[1].toLowerCase(), m[2].trim().toLowerCase());
+                setNpcs(md, list); saveMetadataDebounced(); renderHud();
+                return `Moved "${m[1].toLowerCase()}" to ${m[2].trim().toLowerCase()}.`;
+            }
+            if (sub === 'follow') {
+                const m = rest.match(/^(\S+)(?:\s+(off|stop|no))?\s*$/i);
+                if (!m) return 'Usage: /if-npc follow <name> [off]';
+                const on = !m[2];
+                list = setFollow(list, m[1].toLowerCase(), on);
+                if (on) list = moveNpc(list, m[1].toLowerCase(), vm.getStatus().location);   // join you now
+                setNpcs(md, list); saveMetadataDebounced(); renderHud();
+                return `"${m[1].toLowerCase()}" ${on ? 'now follows you' : 'stays put'}.`;
+            }
             if (!list.length) return 'No NPCs yet. /if-npc add <name> @ <room> : <blurb>';
-            return list.map((n) => `${n.name} @ ${n.room}${n.card ? ` (card: ${n.card})` : ''} — ${n.blurb}`).join('\n');
+            return list.map((n) => `${n.name} @ ${n.room}${n.follows ? ' (following)' : ''}${n.card ? ` (card: ${n.card})` : ''} — ${n.blurb}`).join('\n');
         },
     }));
 

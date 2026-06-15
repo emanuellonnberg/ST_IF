@@ -1,7 +1,14 @@
 // Unit tests for npc.js — pure NPC registry + co-location + addressed detection.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addNpc, removeNpc, bindCard, listNpcs, presentNpcs, npcCanonLine, addressedNpc } from '../npc.js';
+import { addNpc, removeNpc, bindCard, listNpcs, presentNpcs, npcCanonLine, addressedNpc, moveNpc, setFollow, advanceFollowers, deriveNpcName } from '../npc.js';
+
+test('deriveNpcName takes the first word, lowercased + alnum', () => {
+    assert.equal(deriveNpcName('Tomas the Barkeep'), 'tomas');
+    assert.equal(deriveNpcName('Old Maeve'), 'old');
+    assert.equal(deriveNpcName("D'Artagnan, Guard"), 'dartagnan');
+    assert.equal(deriveNpcName(''), '');
+});
 
 test('addNpc adds and replaces by name', () => {
     let l = addNpc([], { name: 'barkeep', room: 'tavern', blurb: 'gruff' });
@@ -37,6 +44,28 @@ test('presentNpcs matches a manifest slug against the VM display name (spaces/ca
     assert.deepEqual(presentNpcs(l, 'Common Room').map((n) => n.name), ['maeve']);
     assert.deepEqual(presentNpcs([{ name: 'tomas', room: 'taproom' }], 'Taproom').map((n) => n.name), ['tomas']);
     assert.deepEqual(presentNpcs(l, 'Taproom'), []);   // different room → not present
+});
+
+test('moveNpc relocates one NPC; "away" hides them from every room', () => {
+    let l = [{ name: 'maeve', room: 'commonroom', blurb: 'sly' }, { name: 'tomas', room: 'taproom' }];
+    l = moveNpc(l, 'maeve', 'taproom');
+    assert.deepEqual(presentNpcs(l, 'Taproom').map((n) => n.name), ['maeve', 'tomas']);
+    l = moveNpc(l, 'maeve', 'away');
+    assert.deepEqual(presentNpcs(l, 'Common Room'), []);   // away matches no real room
+    assert.deepEqual(presentNpcs(l, 'Taproom').map((n) => n.name), ['tomas']);
+});
+
+test('setFollow + advanceFollowers: a follower travels to the player room, off stops it', () => {
+    let l = [{ name: 'maeve', room: 'commonroom', blurb: 'sly' }, { name: 'tomas', room: 'taproom' }];
+    l = setFollow(l, 'maeve', true);
+    assert.equal(l.find((n) => n.name === 'maeve').follows, true);
+    l = advanceFollowers(l, 'Cellar');                     // player moved to the Cellar
+    assert.equal(l.find((n) => n.name === 'maeve').room, 'Cellar');
+    assert.equal(l.find((n) => n.name === 'tomas').room, 'taproom');   // non-follower stays
+    l = setFollow(l, 'maeve', false);
+    assert.equal(l.find((n) => n.name === 'maeve').follows, undefined);
+    l = advanceFollowers(l, 'Kitchen');
+    assert.equal(l.find((n) => n.name === 'maeve').room, 'Cellar');    // no longer follows
 });
 
 test('npcCanonLine lists present NPCs, or empty', () => {
