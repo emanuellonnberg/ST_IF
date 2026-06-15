@@ -13,10 +13,60 @@ export function buildTranslatePrompt(playerText, status, strictness) {
         'You convert a player\'s natural-language roleplay into Interactive Fiction parser commands.',
         `Current location: ${status.location}.`,
         note,
-        'Respond with ONLY a JSON array of short imperative parser commands (e.g. ["take lantern","north"]). No prose, no explanation. Empty array if no world-action.',
+        'Use canonical parser verbs the standard parser understands, and the simplest one- or two-word noun. Prefer: a bare direction (north/n, south, east, west, up, down, in, out); take/drop <obj>; examine <obj>; open/close <obj>; switch on/off <obj>; put <obj> in/on <obj>; give <obj> to <person>; unlock <obj> with <obj>; read/wear/eat <obj>.',
+        'Examples:',
+        '  I pick up the brass lantern -> ["take lantern"]',
+        '  I head through the door to the north -> ["north"]',
+        '  I flick the lamp on -> ["switch on lamp"]',
+        '  I take a close look at the old painting -> ["examine painting"]',
+        '  I slot the rusty key into the lock and turn it -> ["unlock door with key"]',
+        '  "Evening," I say with a tired nod -> []',
+        'Respond with ONLY a JSON array of short imperative parser commands. No prose, no explanation. Empty array if no world-action.',
         '',
         `Player message: ${playerText}`,
     ].join('\n');
+}
+
+// Standard-library messages that mean the parser rejected the wording (wrong verb,
+// unknown word, or no such object) — i.e. the translation missed, not the world.
+// Deliberately excludes "you can't go that way" (a real blocked exit, handled elsewhere).
+const PARSE_FAILS = [
+    /can't see any such thing/i,
+    /\bdon't know the word\b/i,
+    /that's not a verb/i,
+    /not a verb i (?:recognis|recogniz)e/i,
+    /only understood you as far as/i,
+    /didn't understand that sentence/i,
+    /that's not something you can/i,
+];
+
+/** True if the VM output is a parser-level rejection worth re-translating. */
+export function isParserFailure(text) {
+    const t = String(text ?? '');
+    return PARSE_FAILS.some((re) => re.test(t));
+}
+
+/** Prompt to repair one rejected command into a parser-acceptable one. */
+export function buildRepairPrompt(playerText, status, failedCmd, failureText) {
+    return [
+        'An Interactive Fiction parser rejected a command. Correct it.',
+        `Location: ${status.location}.`,
+        `The player wanted: ${playerText}`,
+        `Command tried: ${failedCmd}`,
+        `Parser replied: ${String(failureText ?? '').trim().slice(0, 120)}`,
+        'Give ONE corrected parser command using a canonical verb and the simplest noun (e.g. "take key", "switch on lamp", "examine sign", "north"), or the single word none if it cannot be done. Respond with ONLY the command — no quotes, no prose.',
+    ].join('\n');
+}
+
+/** Pull a single parser command out of the repair model's reply, or null. */
+export function parseCommand(raw) {
+    let s = String(raw ?? '').trim();
+    if (!s) return null;
+    const arr = extractArray(s);                 // tolerate a ["..."] wrapper
+    if (arr && arr.length) s = String(arr[0] ?? '');
+    s = s.replace(/^[\s"'`[]+|[\s"'`\]]+$/g, '').split('\n')[0].trim();
+    if (!s || /^none$/i.test(s)) return null;
+    return s.slice(0, 60);
 }
 
 /** Extract the first top-level JSON array from arbitrary model text. */

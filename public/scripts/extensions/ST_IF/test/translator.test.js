@@ -1,14 +1,43 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildTranslatePrompt, translate } from '../translator.js';
+import { buildTranslatePrompt, translate, isParserFailure, buildRepairPrompt, parseCommand } from '../translator.js';
 
 const status = { location: 'Forest Path', score: 0, moves: 3 };
 
-test('prompt includes player text, status, and strictness instruction', () => {
+test('prompt includes player text, status, strictness, and canonical-verb examples', () => {
     const p = buildTranslatePrompt('I grab the lantern and creep north', status, 'strict');
     assert.match(p, /I grab the lantern and creep north/);
     assert.match(p, /Forest Path/);
     assert.match(p, /JSON array/i);
+    assert.match(p, /switch on lamp/);          // few-shot biases canonical verbs
+    assert.match(p, /Examples:/);
+});
+
+test('isParserFailure flags parse rejections, not legitimate failures', () => {
+    assert.ok(isParserFailure("You can't see any such thing."));
+    assert.ok(isParserFailure('I don\'t know the word "frobnicate".'));
+    assert.ok(isParserFailure("That's not a verb I recognise."));
+    assert.ok(isParserFailure("That's not something you can open."));
+    assert.ok(!isParserFailure("You can't go that way."));     // real blocked exit
+    assert.ok(!isParserFailure('Taken.'));
+    assert.ok(!isParserFailure(''));
+});
+
+test('buildRepairPrompt carries the intent, failed command, and parser reply', () => {
+    const p = buildRepairPrompt('I light the lantern', status, 'light lantern', "You can't see any such thing.");
+    assert.match(p, /I light the lantern/);
+    assert.match(p, /light lantern/);
+    assert.match(p, /any such thing/);
+    assert.match(p, /ONLY the command/);
+});
+
+test('parseCommand extracts one command; none/empty -> null; tolerates quotes/array', () => {
+    assert.equal(parseCommand('switch on lantern'), 'switch on lantern');
+    assert.equal(parseCommand('"take key"'), 'take key');
+    assert.equal(parseCommand('["examine sign"]'), 'examine sign');
+    assert.equal(parseCommand('none'), null);
+    assert.equal(parseCommand(''), null);
+    assert.equal(parseCommand('take lantern\nthen go north'), 'take lantern');   // first line only
 });
 
 test('parses a clean JSON array of commands', async () => {

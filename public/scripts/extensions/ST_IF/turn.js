@@ -1,7 +1,7 @@
 // turn.js — orchestrate one chat turn. Pure: all ST/VM deps injected.
 import { readState, recordTurn, getActiveSnapshot, setCompanion, getCompanionSnapshot, setTogether, readTogether, getFollowQueue, setFollowQueue, setRoomDescription, getRoomDescription, recordMapEdge, setInventoryText, getEdgesForRoom, getExitsForRoom, recordRoom, recordEdge, getGrownRooms, cellOfRoom, roomAtCell, getAnchors, setAnchor, nextAnchorCell, getNpcs, setNpcs, getQuests, getMode } from './state.js';
 import { dirToRoom } from './exits.js';
-import { translate as translateDefault } from './translator.js';
+import { translate as translateDefault, isParserFailure } from './translator.js';
 import { extractMoves, zone, detectShout, validateAction } from './companion.js';
 import { buildCanonBlock, buildApartCanonBlock } from './canon.js';
 import { compactInventory } from './clean.js';
@@ -88,12 +88,26 @@ export async function runTurn(deps, chat, type) {
     const outputs = [];
     const playerMoveCmds = [];
     let prevLoc = statusForPrompt.location;
+    let repairs = 0;
     for (const cmd of cmds) {
-        outputs.push(vm.step(cmd));
+        let effectiveCmd = cmd;
+        let out = vm.step(cmd);
+        // Repair a parser miss (wrong verb/unknown word/no such object) once: re-translate
+        // that command with the failure as feedback, capped per turn to bound latency.
+        if (deps.repairCommand && repairs < 2 && isParserFailure(out)) {
+            repairs++;
+            let fixed = null;
+            try { fixed = await deps.repairCommand(player.text, vm.getStatus(), cmd, out); } catch { /* ignore */ }
+            if (fixed && fixed.toLowerCase() !== cmd.toLowerCase()) {
+                const out2 = vm.step(fixed);
+                if (!isParserFailure(out2)) { out = out2; effectiveCmd = fixed; }
+            }
+        }
+        outputs.push(out);
         const nowLoc = vm.getStatus().location;
         if (nowLoc !== prevLoc) {
-            playerMoveCmds.push(cmd);
-            const dir = extractMoves([cmd])[0];
+            playerMoveCmds.push(effectiveCmd);
+            const dir = extractMoves([effectiveCmd])[0];
             if (dir) recordMapEdge(metadata, prevLoc, dir, nowLoc);
         }
         prevLoc = nowLoc;

@@ -8,7 +8,7 @@ import { SlashCommand } from '../../slash-commands/SlashCommand.js';
 import { ARGUMENT_TYPE, SlashCommandArgument } from '../../slash-commands/SlashCommandArgument.js';
 
 import { IFVM } from './vm.js';
-import { translate } from './translator.js';
+import { translate, buildRepairPrompt, parseCommand } from './translator.js';
 import { decideMove, decideAgency, decideUse } from './companion.js';
 import { runTurn } from './turn.js';
 import { readState, initState, getActiveSnapshot, rewindTo, KEY, setCompanion, getCompanionSnapshot, getRoomDescription, setRoomDescription, getInventoryText, setInventoryText, getExitsForRoom, setExitsForRoom, getEdgesForRoom, readTogether, getWorldGraph, recordRoom, recordEdge, setAnchor, getNpcs, setNpcs, getQuests, setQuests, getMode, setMode, MODES } from './state.js';
@@ -45,6 +45,11 @@ function buildDeps() {
         translate: (text, status, strictness) =>
             translate(text, status, strictness, (prompt) =>
                 qgen({ quietPrompt: prompt, responseLength: 80, skipWIAN: true })),
+        // Repair a single parser-rejected command into an acceptable one (turn.js calls
+        // this only when the VM reports a parse failure).
+        repairCommand: (text, status, failedCmd, failureText) =>
+            qgen({ quietPrompt: buildRepairPrompt(text, status, failedCmd, failureText), responseLength: 16, skipWIAN: true })
+                .then((raw) => parseCommand(raw)),
         setPrompt: (block) => {
             console.debug('[ST_IF] canon injected:\n' + block);
             setExtensionPrompt(KEY, block, extension_prompt_types.IN_CHAT, getSettings().depth, false, extension_prompt_roles.SYSTEM);
