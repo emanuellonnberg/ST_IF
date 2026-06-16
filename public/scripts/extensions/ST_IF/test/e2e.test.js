@@ -116,3 +116,43 @@ test('e2e: a present NPC gets a body, is named in canon, and addressing it queue
     await play(deps, chat, 'I ask maeve about the cellar');
     assert.equal(readState(metadata).pendingNpcSpeak?.npc?.name, 'maeve');
 });
+
+// --- adversarial / edge cases ------------------------------------------------
+
+test('e2e: an unrepairable command fails gracefully — no move, no throw', async () => {
+    const { vm, metadata } = await loadTavern();
+    // "frobnicate cask" is no verb; the repair stub returns none for it.
+    const deps = makeDeps(vm, metadata, { 'i mutter an arcane word': ['frobnicate cask'] });
+    const chat = [];
+    const before = vm.getStatus().location;
+    const block = await play(deps, chat, 'I mutter an arcane word');
+    assert.equal(vm.getStatus().location, before);            // did not move
+    assert.match(block, /not a verb/i);                       // the failure is honest canon, not a crash
+});
+
+test('e2e: multiple present NPCs are all materialized and named in canon', async () => {
+    const { vm, metadata } = await loadTavern();
+    setNpcs(metadata, [
+        { name: 'maeve', room: 'commonroom', blurb: 'a sly regular' },
+        { name: 'bram', room: 'commonroom', blurb: 'a hulking sellsword' },
+    ]);
+    const deps = makeDeps(vm, metadata, { 'i survey the room': ['look'], 'i size up bram': ['examine bram'] });
+    const chat = [];
+    const look = await play(deps, chat, 'I survey the room');
+    assert.match(look, /Present here:[^\n]*maeve/);
+    assert.match(look, /Present here:[^\n]*bram/);
+    assert.match(await play(deps, chat, 'I size up bram'), /figure in the scene/i);   // second body resolves too
+});
+
+test('e2e: a swipe reuses cached outputs and does not re-step the VM', async () => {
+    const { vm, metadata } = await loadTavern();
+    const deps = makeDeps(vm, metadata, { 'i head east': ['east'] });
+    const chat = [{ is_user: true, mes: 'I head east' }];
+    await runTurn(deps, chat, 'normal');
+    const moves = vm.getStatus().moves;
+    assert.equal(vm.getStatus().location, 'Taproom');
+    await runTurn(deps, chat, 'swipe');                       // same message, re-roll
+    assert.equal(vm.getStatus().moves, moves);               // NOT re-stepped (else 'east' would tick again)
+    assert.equal(vm.getStatus().location, 'Taproom');
+    assert.match(deps.getBlock(), /Taproom/);                // canon rebuilt from the cache
+});

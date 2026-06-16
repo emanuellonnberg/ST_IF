@@ -597,6 +597,21 @@ test('effects: xgive mints a real held item; xtakeitem removes it (effects.h ite
     assert.match(vm.step('xtakeitem key'), /xtakeitem none/); // slot freed, nothing left to take
 });
 
+test('effects: the item pool caps at 8 (9th xgive reports full, not corruption)', async () => {
+    const vm = new IFVM(); await vm.load(tavern);
+    for (let i = 0; i < 8; i++) assert.match(vm.step(`xgive item${i}`), /xgive ok/);
+    assert.match(vm.step('xgive overflow'), /xgive full/);
+    // freeing one slot lets a new item in again
+    assert.match(vm.step('xtakeitem item0'), /xtakeitem ok/);
+    assert.match(vm.step('xgive late'), /xgive ok/);
+});
+
+test('effects: the NPC pool caps at 8 (9th xnpc reports full)', async () => {
+    const vm = new IFVM(); await vm.load(tavern);
+    for (let i = 0; i < 8; i++) assert.match(vm.step(`xnpc npc${i}`), /xnpc ok/);
+    assert.match(vm.step('xnpc overflow'), /xnpc full/);
+});
+
 test('effects: NPC bodies — materialize, give an item (transfers + persists off-stage)', async () => {
     const vm = new IFVM(); await vm.load(tavern);
     assert.match(vm.step('xnpc maeve'), /xnpc ok/);
