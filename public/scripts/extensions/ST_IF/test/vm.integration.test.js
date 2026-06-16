@@ -625,6 +625,33 @@ test('effects: NPC bodies — materialize, give an item (transfers + persists of
     assert.match(vm.step('take key'), /can't see any such thing/i); // key is held by Maeve, not loose in the room
 });
 
+// --- Thornfield Manor (murder-mystery world) -------------------------------
+const thornfield = new Uint8Array(readFileSync(new URL('../worlds/thornfield.z5', import.meta.url)));
+
+test('thornfield: cellar is dark unlit; accuse refuses without enough evidence', async () => {
+    const vm = new IFVM(); await vm.load(thornfield);
+    vm.step('north'); vm.step('east'); vm.step('down');           // into the wine cellar, no light
+    assert.match(vm.step('look'), /pitch dark/i);
+    assert.match(vm.step('accuse vale'), /beginnings of a case|of 5 clues/i);
+});
+
+test('thornfield: the full mystery solves — lock, dark cellar, safe, hidden passage, accuse', async () => {
+    const vm = new IFVM(); await vm.load(thornfield);
+    const path = [
+        'north', 'take candelabra', 'light candelabra',          // dining: light source
+        'east', 'open dresser', 'take key',                      // kitchen: spare study key
+        'down', 'take vial', 'up',                               // lit cellar: clue 1
+        'west', 'south', 'west',                                 // -> library
+        'pull red book',                                         // open the hidden passage
+        'unlock study door with key', 'open study door', 'north', // into the study
+        'search body', 'take note',                              // clue 2
+        'dial 1888', 'open safe', 'take will',                   // safe combo -> clue 3
+        'south', 'up', 'take letters', 'take dagger',            // attic via passage: clues 4 + 5
+    ];
+    for (const c of path) vm.step(c);
+    assert.match(vm.step('accuse vale'), /Miss Vale|Case closed/i);
+});
+
 // --- Expandable authored world (apartment frontier) ------------------------
 const apartmentExp = new Uint8Array(readFileSync(new URL('../worlds/apartment-expanse.z5', import.meta.url)));
 

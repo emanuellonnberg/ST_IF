@@ -39,6 +39,14 @@ room + portable light, a switchable lamp, and takeable objects.
   `/if-quest add rats giver=barkeep goal="clear the cellar" reward=gold 10 needs=rats_done` —
   the barkeep then pays the bounded reward (the LLM proposes, the engine validates, the VM
   grants real gold).
+- `thornfield.inf` / `thornfield.z5` — "Thornfield Manor", a one-night **murder mystery**: Lord
+  Ashcroft lies dead in his locked study and you are the detective. ~12 rooms with a real puzzle
+  chain held as ground truth — a **locked study door** (spare key in the kitchen dresser), a wall
+  **safe** opened by `dial 1888` (the year is on the drawing-room portrait and the library ledger),
+  a **hidden passage** to the attic (`pull red book`), a **dark wine cellar** (carry the lit
+  candelabra), and **five clues** to gather (vial, note, will, letters, dagger). `accuse <name>`
+  once you have the evidence closes the case (the killer is Miss Vale). Includes `effects.h` (a
+  `suspicion` meter + clue flags) for card-voiced, **patrolling** suspects via its scenario manifest.
 
 ## NPC items & movement
 
