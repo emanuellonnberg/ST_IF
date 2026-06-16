@@ -203,6 +203,18 @@ export async function runTurn(deps, chat, type) {
     readState(metadata).pendingNpcSpeak = npcSpeaker
         ? { npc: npcSpeaker, playerText: player.text, room: status.location }
         : null;
+    // First-encounter greeting: on walking into a room, the first card-bound NPC you have
+    // not met yet introduces itself after the narrator turn. Skipped when you address
+    // someone this turn (that reply takes precedence). Marked greeted so it fires once.
+    let greet = null;
+    if (status.location !== statusForPrompt.location && !npcSpeaker) {
+        const toGreet = present.find((n) => n.card && !n.greeted);
+        if (toGreet) {
+            greet = { npc: toGreet, room: status.location };
+            setNpcs(metadata, getNpcs(metadata).map((n) => (n.name === toGreet.name ? { ...n, greeted: true } : n)));
+        }
+    }
+    readState(metadata).pendingNpcGreet = greet;
     // Active quests offered by a present giver → reflected in canon so the NPC raises them.
     const presentQuests = present.flatMap((n) => questsForGiver(getQuests(metadata), n.name));
     const questLine = questCanonLine(presentQuests);
