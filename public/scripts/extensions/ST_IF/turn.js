@@ -7,7 +7,7 @@ import { buildCanonBlock, buildApartCanonBlock } from './canon.js';
 import { compactInventory } from './clean.js';
 import { parseRoomJson, sanitizeRoom, buildMetaCommands, blockedMove, directionSuggested, addCell, validateConnections } from './worldgen.js';
 import { reverseDir } from './worldmap.js';
-import { presentNpcs, npcCanonLine, addressedNpc, advanceFollowers, npcBodyCommands } from './npc.js';
+import { presentNpcs, npcCanonLine, addressedNpc, advanceFollowers, advancePatrols, npcBodyCommands } from './npc.js';
 import { questsForGiver, questCanonLine } from './quest.js';
 
 const SKIP_TYPES = new Set(['quiet', 'impersonate']);
@@ -187,10 +187,11 @@ export async function runTurn(deps, chat, type) {
 
     const status = vm.getStatus();
 
-    // Following NPCs travel with the player: when the room changed this turn, move
-    // every follower to the new room so they're counted present (and voiced) here.
+    // When the room changed this turn the world "ticks": followers travel to the new
+    // room, and patrolling NPCs advance one step along their routes (so suspects drift
+    // around while you explore). Lingering in one room freezes them.
     if (status.location !== statusForPrompt.location) {
-        setNpcs(metadata, advanceFollowers(getNpcs(metadata), status.location));
+        setNpcs(metadata, advancePatrols(advanceFollowers(getNpcs(metadata), status.location)));
     }
 
     // NPCs present in the player's room: name them in canon (narrator voices them).

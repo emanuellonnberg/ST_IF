@@ -74,6 +74,30 @@ export function advanceFollowers(list, room) {
     return (list ?? []).map((n) => (n.follows ? { ...n, room: r } : n));
 }
 
+/** Set/replace an NPC's patrol route (≥2 room slugs); fewer than 2 clears it and
+ *  parks them at their first stop. The NPC starts at route[0]. */
+export function setPatrol(list, name, rooms) {
+    const route = (rooms ?? []).map(normalizeRoom).filter(Boolean);
+    return (list ?? []).map((n) => {
+        if (n.name !== name) return n;
+        const c = { ...n };
+        if (route.length >= 2) { c.patrol = route; c.patrolIdx = 0; c.room = route[0]; }
+        else { delete c.patrol; delete c.patrolIdx; }
+        return c;
+    });
+}
+
+/** Advance each patrolling NPC one step along its route — call when the player
+ *  changes room, so the world "ticks" as you explore. Followers (and NPCs without a
+ *  route) stay put; a follower's follow overrides its patrol. */
+export function advancePatrols(list) {
+    return (list ?? []).map((n) => {
+        if (n.follows || !Array.isArray(n.patrol) || n.patrol.length < 2) return n;
+        const idx = ((typeof n.patrolIdx === 'number' ? n.patrolIdx : 0) + 1) % n.patrol.length;
+        return { ...n, room: normalizeRoom(n.patrol[idx]), patrolIdx: idx };
+    });
+}
+
 /** Normalize a room name/slug for matching + storage: lowercase, drop non-alphanumerics,
  *  so a manifest slug ("commonroom") matches the VM's display name ("Common Room"). */
 export function normalizeRoom(s) {

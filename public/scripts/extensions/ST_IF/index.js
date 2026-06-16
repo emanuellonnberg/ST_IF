@@ -16,7 +16,7 @@ import { loadSettings, getSettings, wireSettingsUI, base64ToBytes, bytesToBase64
 import { stripReasoning, compactInventory } from './clean.js';
 import { extractExits, mergeExits, formatExitsLine } from './exits.js';
 import { formatMap, planReplay, upconvertV1 } from './worldmap.js';
-import { addNpc, removeNpc, bindCard, moveNpc, setFollow, deriveNpcName, presentNpcs, normalizeRoom } from './npc.js';
+import { addNpc, removeNpc, bindCard, moveNpc, setFollow, setPatrol, deriveNpcName, presentNpcs, normalizeRoom } from './npc.js';
 import { parseEffectProposal, validateEffect, effectVerb } from './effects.js';
 import { addQuest, removeQuest, listQuests, resolveCompletion } from './quest.js';
 import { parseManifest, planSeed } from './scenario.js';
@@ -617,7 +617,7 @@ function registerSlashCommands() {
 
     SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         name: 'if-npc',
-        helpString: 'Manage in-world NPCs: here <card name> (drop a card into the current room, auto-named+bound) | add <name> @ <room> : <blurb> | bind <name> <card> | move <name> <room> | follow <name> [off] | list | remove <name>.',
+        helpString: 'Manage in-world NPCs: here <card name> (drop a card into the current room, auto-named+bound) | add <name> @ <room> : <blurb> | bind <name> <card> | move <name> <room> | follow <name> [off] | patrol <name> <room> <room> ... | list | remove <name>.',
         unnamedArgumentList: [new SlashCommandArgument('subcommand + args', [ARGUMENT_TYPE.STRING], false, false, '')],
         returns: ARGUMENT_TYPE.STRING,
         callback: async (_args, value) => {
@@ -679,8 +679,17 @@ function registerSlashCommands() {
                 setNpcs(md, list); saveMetadataDebounced(); renderHud();
                 return `"${m[1].toLowerCase()}" ${on ? 'now follows you' : 'stays put'}.`;
             }
+            if (sub === 'patrol') {
+                const parts = rest.split(/\s+/).filter(Boolean);
+                const name = (parts.shift() || '').toLowerCase();
+                if (!name) return 'Usage: /if-npc patrol <name> <room> <room> ...   (no rooms clears it)';
+                list = setPatrol(list, name, parts);
+                setNpcs(md, list); saveMetadataDebounced(); renderHud();
+                const n = list.find((x) => x.name === name);
+                return n?.patrol ? `"${name}" now patrols: ${n.patrol.join(' → ')}.` : `Cleared "${name}"'s patrol.`;
+            }
             if (!list.length) return 'No NPCs yet. /if-npc add <name> @ <room> : <blurb>';
-            return list.map((n) => `${n.name} @ ${n.room}${n.follows ? ' (following)' : ''}${n.card ? ` (card: ${n.card})` : ''} — ${n.blurb}`).join('\n');
+            return list.map((n) => `${n.name} @ ${n.room}${n.follows ? ' (following)' : ''}${n.patrol ? ` (patrol: ${n.patrol.join('→')})` : ''}${n.card ? ` (card: ${n.card})` : ''} — ${n.blurb}`).join('\n');
         },
     }));
 

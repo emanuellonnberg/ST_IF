@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { IFVM } from '../vm.js';
 import { runTurn } from '../turn.js';
-import { initState, readState, setNpcs } from '../state.js';
+import { initState, readState, setNpcs, getNpcs } from '../state.js';
 import { translate, buildRepairPrompt, parseCommand } from '../translator.js';
 
 const STORY = new Uint8Array(readFileSync(new URL('../worlds/tavern.z5', import.meta.url)));
@@ -158,6 +158,16 @@ test('e2e: growing into the void yields clean arrival canon, not the blocked-mov
     assert.match(block, /courtyard/i);                       // the invented room is the canon
     assert.doesNotMatch(block, /can't go that way/i);        // the blocked-move failure was dropped
     assert.notEqual(vm.getStatus().location, 'Origin');      // the player actually moved in
+});
+
+test('e2e: a patrolling NPC advances a step when the player changes room', async () => {
+    const { vm, metadata } = await loadTavern();
+    setNpcs(metadata, [{ name: 'reeves', room: 'commonroom', patrol: ['commonroom', 'taproom'], patrolIdx: 0, blurb: 'butler' }]);
+    const deps = makeDeps(vm, metadata, { 'i head east': ['east'] });
+    await play(deps, [], 'I head east');                       // Common Room -> Taproom: world ticks
+    const reeves = getNpcs(metadata).find((n) => n.name === 'reeves');
+    assert.equal(reeves.room, 'taproom');                      // advanced 0 -> 1 along its route
+    assert.equal(reeves.patrolIdx, 1);
 });
 
 test('e2e: a swipe reuses cached outputs and does not re-step the VM', async () => {

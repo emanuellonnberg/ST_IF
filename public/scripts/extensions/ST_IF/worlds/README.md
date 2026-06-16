@@ -55,6 +55,13 @@ you go. With NPC effects on, the game-master check can also drive this: an NPC y
 may decide to **follow** or **leave** on its own (`npcMove`), so the narrator can have a companion
 join or slip away in-fiction.
 
+NPCs can **patrol** a route on their own: `/if-npc patrol <name> <room> <room> ...` sets a loop the
+NPC walks one step at a time **whenever you change room** (lingering in one room freezes them, so
+you can talk). It cycles back to the start; `/if-npc patrol <name>` with no rooms clears it. A
+scenario manifest can ship a patrol per NPC — give the npc entry a `"patrol": ["roomA","roomB",...]`
+and set its `room` to the first stop. Following overrides a patrol. Great for suspects drifting
+around a manor.
+
 **Quickest add:** stand in the room and `/if-npc here Tomas the Barkeep` — drops that card into
 your current room, bound, with the address-name auto-derived from the card (its first word, e.g.
 `tomas`). The full card name stays as the display/voice; you just address them as `tomas`.
