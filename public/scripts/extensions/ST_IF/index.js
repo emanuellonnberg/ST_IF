@@ -44,11 +44,12 @@ function buildDeps() {
         metadata: ctx.chatMetadata,
         translate: (text, status, strictness) =>
             translate(text, status, strictness, (prompt) =>
-                qgen({ quietPrompt: prompt, responseLength: 80, skipWIAN: true })),
+                qgen({ quietPrompt: prompt, responseLength: 200, skipWIAN: true })),
         // Repair a single parser-rejected command into an acceptable one (turn.js calls
-        // this only when the VM reports a parse failure).
+        // this only when the VM reports a parse failure). Budget covers a reasoning
+        // model's hidden thinking before the one-line answer.
         repairCommand: (text, status, failedCmd, failureText) =>
-            qgen({ quietPrompt: buildRepairPrompt(text, status, failedCmd, failureText), responseLength: 16, skipWIAN: true })
+            qgen({ quietPrompt: buildRepairPrompt(text, status, failedCmd, failureText), responseLength: 120, skipWIAN: true })
                 .then((raw) => parseCommand(raw)),
         setPrompt: (block) => {
             console.debug('[ST_IF] canon injected:\n' + block);
@@ -72,13 +73,13 @@ function buildDeps() {
         companionVM,
         companionUse: (playerText, scene, playerCmds) =>
             decideUse(playerText, scene, playerCmds, getSettings().companionInitiative,
-                (prompt) => qgen({ quietPrompt: prompt, responseLength: 40, skipWIAN: true })),
+                (prompt) => qgen({ quietPrompt: prompt, responseLength: 160, skipWIAN: true })),
         companionMove: (playerText, playerRoom, companionRoom) =>
             decideMove(playerText, playerRoom, companionRoom, getSettings().companionBias,
-                (prompt) => qgen({ quietPrompt: prompt, responseLength: 40, skipWIAN: true })),
+                (prompt) => qgen({ quietPrompt: prompt, responseLength: 160, skipWIAN: true })),
         companionDecide: (playerText, playerRoom, companionRoom, playerMoves) =>
             decideAgency(playerText, playerRoom, companionRoom, playerMoves, getSettings().companionBias,
-                (prompt) => qgen({ quietPrompt: prompt, responseLength: 40, skipWIAN: true })),
+                (prompt) => qgen({ quietPrompt: prompt, responseLength: 160, skipWIAN: true })),
         onNpcSpeak: async ({ npc, playerText, room }) => {
             const ctx = getContext();
             const card = (ctx.characters || []).find((c) => c.name === npc.card || c.avatar === npc.card);
@@ -194,7 +195,7 @@ async function maybeFireEffect({ npc, playerText, room, reply }) {
     try {
         const raw = await qgen({
             quietPrompt: `[Game-master check for NPC "${npc.name}" at "${room}". Player said: "${playerText}". ${npc.name} replied: "${String(reply).slice(0, 300)}".${questText} Does this interaction change game state? Respond ONLY JSON: {"effect":"grant"|"take"|"flag"|"give"|"take-item"|"none","amount":<int>,"flag":"<name>","item":"<one lowercase word>","questDone":"<quest id or empty>","npcMove":"follow"|"leave"|""}. "give" = the NPC hands the player a physical item (set "item"); "take-item" = the NPC takes one back. "npcMove":"follow" if ${npc.name} agrees/decides to travel with the player, "leave" if they depart, else "". Be conservative — "none"/"" unless it clearly happened.]`,
-            responseLength: 60,
+            responseLength: 160,
             skipWIAN: true,
         });
         proposal = parseEffectProposal(raw);
@@ -342,7 +343,7 @@ function ensureExitsExtracted() {
     if (exitsLastAttemptKey === attemptKey) return;
     exitsLastAttemptKey = attemptKey;
     exitsExtractionInFlight = true;
-    extractExits(desc, (prompt) => qgen({ quietPrompt: prompt, responseLength: 60, skipWIAN: true }))
+    extractExits(desc, (prompt) => qgen({ quietPrompt: prompt, responseLength: 220, skipWIAN: true }))
         .then((exits) => {
             if (exits === null) return;            // parse failure — retry on next room/desc change
             setExitsForRoom(ctx.chatMetadata, room, exits, desc);
@@ -354,11 +355,12 @@ function ensureExitsExtracted() {
 }
 
 /** Apply freshly-loaded story bytes: store, (re)seed state, render. Shared by upload + picker. */
-async function applyStoryBytes(name, bytes, id) {
+async function applyStoryBytes(name, bytes, id, file) {
     const ctx = getContext();
     const s = getSettings();
     s.storyName = name;
     s.storyId = id || '';          // base-world id for export/import (bundled worlds only)
+    s.storyFile = file || '';      // bundled world filename — lets a fresh chat re-seed its scenario
     s.storyBase64 = bytesToBase64(bytes);
     saveSettingsDebounced();
     await vm.load(bytes);
@@ -571,6 +573,11 @@ async function ensureStoryLoaded() {
     renderHud();
     ensureExitsExtracted();
     seedOpeningCanon();
+    // Auto-seed the bundled scenario on a fresh chat (idempotent: seedScenario no-ops
+    // if the NPC/quest registries are already populated). So you no longer have to
+    // re-load from the picker every new chat — just start one.
+    const wf = getSettings().storyFile;
+    if (wf) { try { await seedScenario(wf); } catch (e) { console.warn('[ST_IF] auto-seed failed', e); } }
 }
 
 /** /if-cmd advances the VM outside the turn pipeline; persist the new snapshot. */
@@ -805,7 +812,7 @@ jQuery(async () => {
             const id = opt.attr('data-id') || '';
             try {
                 const bytes = new Uint8Array(await (await fetch(`/scripts/extensions/ST_IF/worlds/${file}`)).arrayBuffer());
-                await applyStoryBytes(label, bytes, id);
+                await applyStoryBytes(label, bytes, id, file);
                 await seedScenario(file);                 // auto-seed NPCs/quests/cards from the manifest
                 toastr.success(`Loaded ${label}`, 'ST_IF');
             } catch (e) {

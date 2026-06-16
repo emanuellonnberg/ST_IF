@@ -356,7 +356,9 @@ export async function runTurn(deps, chat, type) {
                     vm.restore(preSnap);                  // her action would kill the avatar — dropped
                 } else {
                     companionActionCmd = actCmd;
-                    outputs.push(out);
+                    // Don't double the canon when the companion's action yields the same
+                    // text the player's did (e.g. a narrator/companion mirroring the move).
+                    if (!outputs.includes(out)) outputs.push(out);
                     // The world changed after the canonical persist — re-persist.
                     const s2 = readState(metadata);
                     canonSnap = vm.save();

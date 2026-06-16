@@ -40,10 +40,11 @@ test('present NPCs and the speaking cue appear only when provided', () => {
     assert.doesNotMatch(plain, /Present here/);
     const withNpc = buildCanonBlock({ ...base, npcLine: 'Present here: barkeep — gruff.', npcSpeakingFor: 'barkeep' });
     assert.match(withNpc, /Present here: barkeep — gruff\./);
-    assert.match(withNpc, /barkeep is here and will answer for themselves/);
+    assert.match(withNpc, /barkeep is here and answers in their OWN message/);
+    assert.match(withNpc, /do NOT speak, quote, or describe barkeep's reply/);   // narrator must not pre-empt
     const noSpeaker = buildCanonBlock({ ...base, npcLine: 'Present here: hazel — shy.' });
     assert.match(noSpeaker, /Present here: hazel/);
-    assert.doesNotMatch(noSpeaker, /answer for themselves/);
+    assert.doesNotMatch(noSpeaker, /OWN message/);
 });
 
 test('action turn includes result and status', () => {
