@@ -136,6 +136,11 @@ export async function runTurn(deps, chat, type) {
         const mayGrow = settings.growthMode !== 'guided'
             || directionSuggested(getExitsForRoom(metadata, fromDisplay), dir);
         if (dir && !sealed && mayGrow && vm.isExpandable()) {
+            // The blocked-move failure ("you can't go that way") triggered growth but the
+            // player actually lands in the new room — drop it so canon shows a clean arrival,
+            // not a contradiction. Restored below only if growth doesn't end up moving them.
+            const blockedOut = outputs.pop();
+            const before = outputs.length;
             try {
                 // A frontier needs a coordinate anchor the first time we grow from it.
                 if (fromSlug !== 'origin' && cellOfRoom(metadata, fromSlug) == null) {
@@ -176,6 +181,7 @@ export async function runTurn(deps, chat, type) {
             } catch (e) {
                 if (deps.debugLog) deps.debugLog({ note: 'worldgen failed', error: String(e) });
             }
+            if (outputs.length === before) outputs.push(blockedOut);   // growth didn't land → keep the failure as canon
         }
     }
 

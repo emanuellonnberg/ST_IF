@@ -11,6 +11,7 @@ import { initState, readState, setNpcs } from '../state.js';
 import { translate, buildRepairPrompt, parseCommand } from '../translator.js';
 
 const STORY = new Uint8Array(readFileSync(new URL('../worlds/tavern.z5', import.meta.url)));
+const EXPANSE = new Uint8Array(readFileSync(new URL('../worlds/expanse.z5', import.meta.url)));
 
 // A deterministic stand-in for the side-LLM. Maps the player's message (in the
 // translate prompt) to parser commands, and repairs one known bad verb.
@@ -142,6 +143,21 @@ test('e2e: multiple present NPCs are all materialized and named in canon', async
     assert.match(look, /Present here:[^\n]*maeve/);
     assert.match(look, /Present here:[^\n]*bram/);
     assert.match(await play(deps, chat, 'I size up bram'), /figure in the scene/i);   // second body resolves too
+});
+
+test('e2e: growing into the void yields clean arrival canon, not the blocked-move failure', async () => {
+    const vm = new IFVM(); await vm.load(EXPANSE);
+    const metadata = {}; initState(metadata, 'expanse', vm.save());
+    const deps = makeDeps(vm, metadata, { 'i walk north into the unknown': ['north'] }, { dynamicWorld: true });
+    deps.generateRoom = async () => JSON.stringify({
+        name: 'courtyard', description: 'A wide gravel courtyard ringed by grey walls. A gate leads north.',
+        objects: [], connections: [],
+    });
+    const chat = [];
+    const block = await play(deps, chat, 'I walk north into the unknown');
+    assert.match(block, /courtyard/i);                       // the invented room is the canon
+    assert.doesNotMatch(block, /can't go that way/i);        // the blocked-move failure was dropped
+    assert.notEqual(vm.getStatus().location, 'Origin');      // the player actually moved in
 });
 
 test('e2e: a swipe reuses cached outputs and does not re-step the VM', async () => {
