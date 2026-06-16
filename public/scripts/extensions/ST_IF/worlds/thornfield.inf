@@ -1,0 +1,248 @@
+! thornfield.inf — "Thornfield Manor", an ST_IF murder-mystery world. Public domain (CC0).
+! A one-night mystery: Lord Ashcroft lies dead in his locked study. You are the
+! detective. The VM holds the hard ground truth — a locked door, a safe combination,
+! a hidden passage, a dark cellar, and the physical clues. The card-voiced suspects
+! (Reeves, Lady Ashcroft, Dr. Crane, Miss Vale, Major Blunt) come from the scenario
+! manifest and patrol the manor; showing them clues drives flag-gated reveals.
+Constant Story "THORNFIELD MANOR";
+Constant Headline "^A one-night murder mystery for ST_IF.^";
+Replace BurnSub;          ! redefined below: light/burn a switchable -> SwitchOn
+Include "Parser";
+Include "VerbLib";
+
+Global clues = 0;         ! distinct key clues gathered (of 5)
+Global suspicion = 0;     ! NPC-effect meter (effects.h gold hook maps here)
+Global passageOpen = 0;   ! the library bookcase passage to the attic
+
+! A takeable clue that counts itself the first time it is picked up.
+Class Clue
+  with clued 0,
+       after [; Take: if (self.clued == 0) { self.clued = 1; clues = clues + 1;
+                          print "^[Clue ", clues, " of 5 gathered.]^"; } ];
+
+[ Initialise;
+   location = Foyer;
+   move Candelabra to DiningRoom;
+   move StudyKey to Dresser;
+   move Ledger to Library;
+   move Glove to DrawingRoom;
+   move TornNote to Body;
+   move Will to WallSafe;
+   move Letters to Attic;
+   move Weapon to Attic;
+   move PoisonVial to Cellar;
+   print "^^Thornfield Manor. A storm batters the windows. Lord Ashcroft lies dead in his ";
+   print "study, the door locked from within. The guests are scattered through the house, ";
+   print "and the constable is an hour away. You are the detective: find the evidence and ";
+   print "name the killer.^^";
+   "Type ~look~ to begin.";
+];
+
+! ---- Ground floor -----------------------------------------------------------
+Object Foyer "Entrance Hall"
+  with description "A grand panelled hall, oak-dark and hung with portraits of dour ancestors.
+        The dining room lies north, a drawing room east, the library west, and a staircase
+        climbs up into shadow.",
+       n_to DiningRoom, e_to DrawingRoom, w_to Library, u_to Landing,
+  has light;
+
+Object DiningRoom "Dining Room"
+  with description "A long table set for a dinner no one finished — wine congealing in glasses.
+        The hall is south; the kitchen lies east through a service door.",
+       s_to Foyer, e_to Kitchen,
+  has light;
+
+Object Kitchen "Kitchen"
+  with description "A flagstoned kitchen gone cold. The dining room is west; a low door drops
+        down to the cellar.",
+       w_to DiningRoom, d_to Cellar,
+  has light;
+
+Object Cellar "Wine Cellar"
+  with description "A cramped cellar of racked bottles and cobwebs. Stairs lead up to the kitchen.",
+       u_to Kitchen,
+  has ;                   ! dark — needs the lit candelabra carried down
+
+Object DrawingRoom "Drawing Room"
+  with description "A warm parlour of velvet chairs and a cold hearth. The hall is west; glass
+        doors open north into the conservatory.",
+       w_to Foyer, n_to Conservatory,
+  has light;
+
+Object Conservatory "Conservatory"
+  with description "A glass room of ferns and rain-streaked panes. The drawing room is south.",
+       s_to DrawingRoom,
+  has light;
+
+Object Library "Library"
+  with description "Floor-to-ceiling shelves and a reading desk. The hall is east; a heavy door
+        to the north leads to the study.",
+       e_to Foyer,
+       n_to StudyDoor,
+       u_to [; if (passageOpen) return Attic; "The bookcase covers that wall — there is no way up."; ],
+  has light;
+
+Object Study "Study"
+  with description "Lord Ashcroft's study: a vast desk, a wall of books, and the body slumped in
+        the chair. The only door is south, back to the library.",
+       s_to StudyDoor,
+  has light;
+
+! ---- Upstairs ---------------------------------------------------------------
+Object Landing "Upstairs Landing"
+  with description "A carpeted landing. Stairs go down to the hall; the master bedroom is west,
+        a guest bedroom east.",
+       d_to Foyer, w_to MasterBedroom, e_to GuestBedroom,
+  has light;
+
+Object MasterBedroom "Master Bedroom"
+  with description "Lord Ashcroft's chamber — austere, the bed unslept-in. The landing is east.",
+       e_to Landing,
+  has light;
+
+Object GuestBedroom "Guest Bedroom"
+  with description "A guest room with a packed travelling-case, as if someone meant to leave.
+        The landing is west.",
+       w_to Landing,
+  has light;
+
+Object Attic "Attic"
+  with description "A dusty attic of sheeted furniture, reached by the hidden stair. The passage
+        leads back down to the library.",
+       d_to Library,
+  has light;
+
+! ---- The locked study door --------------------------------------------------
+Object StudyDoor "study door"
+  with name 'study' 'door' 'oak' 'heavy',
+       description [; if (self has open) "A heavy oak door, standing open."; "A heavy oak door, shut and locked."; ],
+       door_to [; if (location == Library) return Study; return Library; ],
+       door_dir [; if (location == Library) return n_to; return s_to; ],
+       with_key StudyKey,
+       found_in Library Study,
+  has static door openable lockable locked;
+
+! ---- Light: carry the lit candelabra into the dark cellar -------------------
+Object Candelabra "brass candelabra"
+  with name 'candelabra' 'candles' 'candle' 'brass',
+       description "A heavy brass candelabra of three candles.",
+       before [;
+         SwitchOn: give self on light; "The candles catch and throw a warm light.";
+         SwitchOff: give self ~on ~light; "You pinch out the candles.";
+       ],
+  has switchable;
+
+! ---- Scenery + puzzle fixtures ----------------------------------------------
+Object Body "Lord Ashcroft's body"
+  with name 'body' 'corpse' 'lord' 'ashcroft' 'victim',
+       description "Lord Ashcroft, quite dead. A faint bitter-almond smell clings to his lips.",
+       found_in Study,
+  has static container open proper;
+
+Object WallSafe "wall safe"
+  with name 'safe' 'wall' 'dial',
+       description "A wall safe behind a tilted portrait, its brass dial set for a four-figure code.",
+       found_in Study,
+  has static container openable lockable locked;
+
+Object Dresser "kitchen dresser"
+  with name 'dresser' 'drawer' 'cupboard',
+       description "A scarred pine dresser with a single drawer.",
+       found_in Kitchen,
+  has static container openable;
+
+Object Portrait "tilted portrait"
+  with name 'portrait' 'painting' 'picture',
+       description "A portrait of the late Lady Ashcroft, dated 1888 in the corner.",
+       found_in Study DrawingRoom,
+  has static;
+
+Object RedBook "red book"
+  with name 'red' 'book' 'volume',
+       description "A red leather volume that sits proud of the shelf, like a handle.",
+       found_in Library,
+       before [;
+         Pull, Take, Turn:
+           if (passageOpen == 0) {
+              passageOpen = 1;
+              "You pull the red book. With a grind of hidden gears the bookcase swings aside,
+               revealing a narrow stair leading up.";
+           }
+           "The bookcase already stands open.";
+       ],
+  has static;
+
+! ---- Portable items ---------------------------------------------------------
+Object StudyKey "small brass key"
+  with name 'key' 'brass' 'small',
+       description "A small brass key — the spare to the study.";
+
+Object Ledger "leather ledger"
+  with name 'ledger' 'accounts' 'leather',
+       description "A debt ledger. One page is circled: a sum owed, and the year it fell due — 1888.";
+
+Object Glove "lady's glove"
+  with name 'glove' 'kid',
+       description "A single kid glove, a woman's, the cuff stained dark.";
+
+Clue TornNote "torn note"
+  with name 'note' 'torn' 'paper',
+       description "A torn half of a note: '...cannot pay what I owe. By midnight it must be —'";
+
+Clue Will "will"
+  with name 'will' 'testament' 'document',
+       description "Lord Ashcroft's will, re-drawn last week — cutting out his niece entirely.";
+
+Clue Letters "bundle of letters"
+  with name 'letters' 'bundle',
+       description "Love letters between Miss Vale and a man not her uncle — and a threat to expose her.";
+
+Clue Weapon "silver dagger"
+  with name 'dagger' 'knife' 'silver' 'weapon',
+       description "An ornamental silver dagger, its blade wiped but not clean.";
+
+Clue PoisonVial "glass vial"
+  with name 'vial' 'glass' 'poison' 'bottle',
+       description "A small glass vial reeking of bitter almonds — cyanide. Hidden behind the wine.";
+
+! ---- Host hooks for effects.h (suspicion meter) + the include ---------------
+[ XE_AddGold n; suspicion = suspicion + n; if (suspicion < 0) suspicion = 0; ];
+[ XE_Gold; return suspicion; ];
+Include "effects.h";
+
+! ---- Grammar ----------------------------------------------------------------
+Include "Grammar";
+
+! Natural light verbs (the translator emits "light X"); 'light' is the Burn synonym.
+[ BurnSub;
+    if (noun has switchable) { <SwitchOn noun>; rtrue; }
+    if (noun has animate) return L__M(##Burn, 2, noun);
+    L__M(##Burn, 1, noun);
+];
+Verb 'extinguish' 'douse' 'snuff' 'unlight' 'quench'
+   * noun                     -> SwitchOff;
+Verb 'use' 'activate'
+   * noun                     -> SwitchOn;
+
+! The safe combination: "dial 1888".
+[ DialSub;
+   if (noun == 1888) {
+      if (WallSafe has locked) { give WallSafe ~locked; "The dial clicks; the safe is unlocked."; }
+      "The safe is already unlocked.";
+   }
+   "Nothing happens — wrong combination.";
+];
+Verb 'dial' 'spin'
+   * number                   -> Dial;
+
+! Accuse the killer (needs the evidence in hand).
+[ AccuseSub;
+   if (clues < 4) "You cannot make an accusation stick — you have only the beginnings of a case
+        (", clues, " of 5 clues). Find more evidence first.";
+   "With the letters, the will, the dagger and the vial laid out, the case is plain: the killer is
+    Miss Vale, the niece — cut from the will and drowning in debt, she poisoned her uncle's wine.
+    Case closed. **You have solved the murder at Thornfield Manor.**";
+];
+Verb 'accuse' 'blame' 'solve' 'arrest'
+   *                          -> Accuse
+   * topic                    -> Accuse;
