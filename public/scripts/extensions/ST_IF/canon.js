@@ -45,7 +45,7 @@ export function buildCanonBlock({ outputs, status, ranCommands, injectStateOnRp,
     if (companionActionCmd) lines.push(`The action "${companionActionCmd}" was performed by {{char}} — its result above is {{char}}'s own deed; narrate it as theirs.`);
     if (companionPresent) lines.push('{{char}} is here with you.');
     if (npcLine) lines.push(npcLine);
-    if (npcSpeakingFor) lines.push(`${npcSpeakingFor} is here and will answer for themselves — narrate the scene and action, but don't put words in ${npcSpeakingFor}'s mouth.`);
+    if (npcSpeakingFor) lines.push(`${npcSpeakingFor} is here and answers in their OWN message right after yours. Narrate only {{user}}'s approach/words and the setting — do NOT speak, quote, or describe ${npcSpeakingFor}'s reply, reaction, or expression; leave all of that to them. End on {{user}} addressing them.`);
     if (questLine) lines.push(questLine);
     if (effectLine) lines.push(effectLine);
     return lines.join('\n');

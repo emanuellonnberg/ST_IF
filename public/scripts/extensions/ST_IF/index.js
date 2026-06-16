@@ -355,11 +355,12 @@ function ensureExitsExtracted() {
 }
 
 /** Apply freshly-loaded story bytes: store, (re)seed state, render. Shared by upload + picker. */
-async function applyStoryBytes(name, bytes, id) {
+async function applyStoryBytes(name, bytes, id, file) {
     const ctx = getContext();
     const s = getSettings();
     s.storyName = name;
     s.storyId = id || '';          // base-world id for export/import (bundled worlds only)
+    s.storyFile = file || '';      // bundled world filename — lets a fresh chat re-seed its scenario
     s.storyBase64 = bytesToBase64(bytes);
     saveSettingsDebounced();
     await vm.load(bytes);
@@ -572,6 +573,11 @@ async function ensureStoryLoaded() {
     renderHud();
     ensureExitsExtracted();
     seedOpeningCanon();
+    // Auto-seed the bundled scenario on a fresh chat (idempotent: seedScenario no-ops
+    // if the NPC/quest registries are already populated). So you no longer have to
+    // re-load from the picker every new chat — just start one.
+    const wf = getSettings().storyFile;
+    if (wf) { try { await seedScenario(wf); } catch (e) { console.warn('[ST_IF] auto-seed failed', e); } }
 }
 
 /** /if-cmd advances the VM outside the turn pipeline; persist the new snapshot. */
@@ -806,7 +812,7 @@ jQuery(async () => {
             const id = opt.attr('data-id') || '';
             try {
                 const bytes = new Uint8Array(await (await fetch(`/scripts/extensions/ST_IF/worlds/${file}`)).arrayBuffer());
-                await applyStoryBytes(label, bytes, id);
+                await applyStoryBytes(label, bytes, id, file);
                 await seedScenario(file);                 // auto-seed NPCs/quests/cards from the manifest
                 toastr.success(`Loaded ${label}`, 'ST_IF');
             } catch (e) {
