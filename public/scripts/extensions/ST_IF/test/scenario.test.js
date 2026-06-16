@@ -45,6 +45,11 @@ test('planSeed narrator is null when the manifest omits it', () => {
     assert.equal(planSeed({ cards: [] }, []).narrator, null);
 });
 
+test('planSeed passes the shared brief through (null when absent)', () => {
+    assert.equal(planSeed({ brief: 'A lord lies dead in his study.' }, []).brief, 'A lord lies dead in his study.');
+    assert.equal(planSeed({ cards: [] }, []).brief, null);
+});
+
 test('planSeed flags referenced-but-unshipped cards as missing', () => {
     const plan = planSeed(MANIFEST, []);
     // ghost references "Spectre" which is neither present nor shipped → missing.
@@ -54,5 +59,5 @@ test('planSeed flags referenced-but-unshipped cards as missing', () => {
 
 test('planSeed tolerates an empty manifest', () => {
     const plan = planSeed({}, []);
-    assert.deepEqual(plan, { cardsToImport: [], npcs: [], quests: [], effectSafety: null, narrator: null, missing: [] });
+    assert.deepEqual(plan, { cardsToImport: [], npcs: [], quests: [], effectSafety: null, narrator: null, brief: null, missing: [] });
 });
