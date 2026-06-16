@@ -97,6 +97,68 @@ XE_Item xitem_7 with slot 7;
    "xtakeitem none";
 ];
 
+! --- NPC body pool ----------------------------------------------------------
+! Blank `animate` objects the engine materialises so the parser can act on a
+! registry NPC physically: examine them, "give key to maeve", "show coin to tomas".
+! Dialogue stays with the LLM/card; these are just the bodies. A body keeps its
+! held items while off-stage (XE_Limbo), so a gift to an NPC persists.
+Constant XE_NPCS = 8;
+Constant XE_NNBUF = 24;            ! per-NPC name buffer (byte 0 = length)
+Array XE_NpcName -> XE_NPCS * XE_NNBUF;
+
+Object XE_Limbo "(off-stage)";    ! holder for absent NPCs' bodies + their belongings
+
+[ XE_NNm i; return XE_NpcName + i * XE_NNBUF; ];
+
+Class XE_Npc
+  with parse_name [ ba bl wa wl i;
+           ba = XE_NNm(self.slot); bl = ba->0;
+           if (bl == 0) return 0;                     ! unclaimed -> unmatchable
+           wa = WordAddress(wn); wl = WordLength(wn);
+           if (wl ~= bl) return 0;
+           for (i=0 : i<wl : i++) if ((wa->i) ~= (ba->(i+1))) return 0;
+           wn++; return 1;
+       ],
+       short_name [ ba bl i c; ba = XE_NNm(self.slot); bl = ba->0;
+           for (i=0 : i<bl : i++) { c = ba->(i+1); if (i == 0 && c >= 'a' && c <= 'z') c = c - 32; print (char) c; }
+           rtrue; ],
+       description "A figure in the scene.",
+       life [;
+           Give: move noun to self; print "You hand ", (the) noun, " to ", (the) self, "."; new_line; rtrue;
+           default: rfalse;                            ! talk etc. is handled by the narrator/card
+       ],
+       slot 0
+  has animate proper;
+
+XE_Npc xnpc_0 with slot 0;
+XE_Npc xnpc_1 with slot 1;
+XE_Npc xnpc_2 with slot 2;
+XE_Npc xnpc_3 with slot 3;
+XE_Npc xnpc_4 with slot 4;
+XE_Npc xnpc_5 with slot 5;
+XE_Npc xnpc_6 with slot 6;
+XE_Npc xnpc_7 with slot 7;
+
+[ XE_NpcObj s   o; objectloop (o ofclass XE_Npc) if (o.slot == s) return o; return 0; ];
+[ XE_NpcFree i; for (i=0 : i<XE_NPCS : i++) if ((XE_NNm(i)->0) == 0) return i; return -1; ];
+[ XE_NpcFind wx   i; for (i=0 : i<XE_NPCS : i++) if ((XE_NNm(i)->0) ~= 0 && XE_WordEq(wx, XE_NNm(i))) return XE_NpcObj(i); return 0; ];
+
+[ XnpcSub o s;       ! ensure NPC word(2) has a body, here in the player's room
+   if (WordLength(2) == 0) "xnpc bad";
+   o = XE_NpcFind(2);
+   if (o == 0) { s = XE_NpcFree(); if (s < 0) "xnpc full"; XE_CopyWord(2, XE_NNm(s), XE_NNBUF); o = XE_NpcObj(s); }
+   if (o == 0) "xnpc full";
+   move o to location;
+   "xnpc ok";
+];
+[ XnpcawaySub o;     ! send NPC word(2)'s body off-stage (keeps whatever it holds)
+   if (WordLength(2) == 0) "xnpcaway bad";
+   o = XE_NpcFind(2);
+   if (o == 0) "xnpcaway none";
+   move o to XE_Limbo;
+   "xnpcaway ok";
+];
+
 ! --- meta-verbs the engine drives ---
 [ XflagSub;
    if (WordLength(2) == 0) "xflag bad";
@@ -111,10 +173,15 @@ XE_Item xitem_7 with slot 7;
 [ XtakeSub;  XE_AddGold(-XE_NumOf(2)); "xtake ok"; ];
 [ XgoldSub;  print XE_Gold(); new_line; rtrue; ];
 
-Verb 'xflag'  * topic -> Xflag;
-Verb 'xflagq' * topic -> Xflagq;
-Verb 'xgrant' * topic -> Xgrant;
-Verb 'xtake'  * topic -> Xtake;
-Verb 'xgold'  * -> Xgold;
-Verb 'xgive'     * topic -> Xgive;
-Verb 'xtakeitem' * topic -> Xtakeitem;
+! All engine verbs are `meta`: they change ground truth without advancing the
+! world clock (no daemons/timers), so the per-turn NPC-body sync can't fast-forward
+! a cooking timer or any other each_turn process.
+Verb meta 'xflag'  * topic -> Xflag;
+Verb meta 'xflagq' * topic -> Xflagq;
+Verb meta 'xgrant' * topic -> Xgrant;
+Verb meta 'xtake'  * topic -> Xtake;
+Verb meta 'xgold'  * -> Xgold;
+Verb meta 'xgive'     * topic -> Xgive;
+Verb meta 'xtakeitem' * topic -> Xtakeitem;
+Verb meta 'xnpc'      * topic -> Xnpc;
+Verb meta 'xnpcaway'  * topic -> Xnpcaway;

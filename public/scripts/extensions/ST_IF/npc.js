@@ -60,6 +60,14 @@ export function setFollow(list, name, on) {
     });
 }
 
+/** Meta-commands that sync VM NPC bodies to the registry for the player's `roomSlug`:
+ *  materialize each present NPC (xnpc), send the rest off-stage (xnpcaway, keeping
+ *  whatever they hold). Inert in a world without effects.h (the verbs just no-op). */
+export function npcBodyCommands(list, roomSlug) {
+    const r = normalizeRoom(roomSlug);
+    return (list ?? []).map((n) => (normalizeRoom(n.room) === r ? `xnpc ${n.name}` : `xnpcaway ${n.name}`));
+}
+
 /** Move every following NPC to `room` (call when the player changes room). */
 export function advanceFollowers(list, room) {
     const r = normalizeRoom(room);

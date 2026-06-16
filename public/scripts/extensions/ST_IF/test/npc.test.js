@@ -1,7 +1,14 @@
 // Unit tests for npc.js — pure NPC registry + co-location + addressed detection.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addNpc, removeNpc, bindCard, listNpcs, presentNpcs, npcCanonLine, addressedNpc, moveNpc, setFollow, advanceFollowers, deriveNpcName, normalizeRoom } from '../npc.js';
+import { addNpc, removeNpc, bindCard, listNpcs, presentNpcs, npcCanonLine, addressedNpc, moveNpc, setFollow, advanceFollowers, deriveNpcName, normalizeRoom, npcBodyCommands } from '../npc.js';
+
+test('npcBodyCommands materializes present NPCs and sends the rest off-stage', () => {
+    const l = [{ name: 'maeve', room: 'commonroom' }, { name: 'tomas', room: 'taproom' }];
+    assert.deepEqual(npcBodyCommands(l, 'Common Room'), ['xnpc maeve', 'xnpcaway tomas']);
+    assert.deepEqual(npcBodyCommands(l, 'Taproom'), ['xnpcaway maeve', 'xnpc tomas']);
+    assert.deepEqual(npcBodyCommands([], 'Taproom'), []);
+});
 
 test('deriveNpcName picks the first non-title word, lowercased + alnum', () => {
     assert.equal(deriveNpcName('Tomas the Barkeep'), 'tomas');

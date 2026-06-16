@@ -597,6 +597,19 @@ test('effects: xgive mints a real held item; xtakeitem removes it (effects.h ite
     assert.match(vm.step('xtakeitem key'), /xtakeitem none/); // slot freed, nothing left to take
 });
 
+test('effects: NPC bodies — materialize, give an item (transfers + persists off-stage)', async () => {
+    const vm = new IFVM(); await vm.load(tavern);
+    assert.match(vm.step('xnpc maeve'), /xnpc ok/);
+    assert.match(vm.step('look'), /Maeve/);                       // a real object now in the room
+    vm.step('xgive key');
+    assert.match(vm.step('give key to maeve'), /hand the key to Maeve/i);
+    assert.doesNotMatch(vm.query('inventory'), /key/);            // really transferred off the player
+    assert.match(vm.step('xnpcaway maeve'), /xnpcaway ok/);
+    assert.doesNotMatch(vm.step('look'), /Maeve/);                // sent off-stage
+    assert.match(vm.step('xnpc maeve'), /xnpc ok/);               // and back
+    assert.match(vm.step('take key'), /can't see any such thing/i); // key is held by Maeve, not loose in the room
+});
+
 // --- Expandable authored world (apartment frontier) ------------------------
 const apartmentExp = new Uint8Array(readFileSync(new URL('../worlds/apartment-expanse.z5', import.meta.url)));
 
