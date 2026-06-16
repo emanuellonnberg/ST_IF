@@ -1,7 +1,22 @@
 // Unit tests for npc.js — pure NPC registry + co-location + addressed detection.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addNpc, removeNpc, bindCard, listNpcs, presentNpcs, npcCanonLine, addressedNpc, moveNpc, setFollow, advanceFollowers, deriveNpcName, normalizeRoom, npcBodyCommands, setPatrol, advancePatrols } from '../npc.js';
+import { addNpc, removeNpc, bindCard, listNpcs, presentNpcs, npcCanonLine, addressedNpc, moveNpc, setFollow, advanceFollowers, deriveNpcName, normalizeRoom, npcBodyCommands, setPatrol, advancePatrols, whereaboutsLine } from '../npc.js';
+
+test('whereaboutsLine lists card NPCs who are elsewhere (not here, not away, must have a card)', () => {
+    const l = [
+        { name: 'crane', room: 'library', card: 'Dr. Crane' },
+        { name: 'vale', room: 'conservatory', card: 'Miss Vale' },
+        { name: 'tomas', room: 'taproom', card: 'X' },        // present here → excluded
+        { name: 'ghost', room: 'away', card: 'G' },           // away → not located
+        { name: 'sweep', room: 'kitchen' },                   // no card → excluded
+    ];
+    const line = whereaboutsLine(l, 'Taproom');
+    assert.match(line, /crane is in the library/);
+    assert.match(line, /vale is in the conservatory/);
+    assert.doesNotMatch(line, /tomas|ghost|sweep/);
+    assert.equal(whereaboutsLine([], 'Taproom'), '');
+});
 
 test('setPatrol assigns a route (>=2 rooms, parks at first stop); fewer clears it', () => {
     let l = [{ name: 'reeves', room: 'foyer', blurb: 'butler' }];

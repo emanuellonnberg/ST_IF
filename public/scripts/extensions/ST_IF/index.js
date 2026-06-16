@@ -698,8 +698,10 @@ function registerSlashCommands() {
                 const n = list.find((x) => x.name === name);
                 return n?.patrol ? `"${name}" now patrols: ${n.patrol.join(' → ')}.` : `Cleared "${name}"'s patrol.`;
             }
-            if (!list.length) return 'No NPCs yet. /if-npc add <name> @ <room> : <blurb>';
-            return list.map((n) => `${n.name} @ ${n.room}${n.follows ? ' (following)' : ''}${n.patrol ? ` (patrol: ${n.patrol.join('→')})` : ''}${n.card ? ` (card: ${n.card})` : ''} — ${n.blurb}`).join('\n');
+            if (!list.length) { const m = 'No NPCs yet. /if-npc add <name> @ <room> : <blurb>'; postComment(`*(NPCs)* ${m}`); return m; }
+            const out = list.map((n) => `${n.name} @ ${n.room}${n.follows ? ' (following)' : ''}${n.patrol ? ` (patrol: ${n.patrol.join('→')})` : ''}${n.card ? ` (card: ${n.card})` : ''} — ${n.blurb}`).join('\n');
+            postComment('*(NPCs)*\n```\n' + out + '\n```');   // slash-command returns aren't shown unpiped; post it visibly
+            return out;
         },
     }));
 
