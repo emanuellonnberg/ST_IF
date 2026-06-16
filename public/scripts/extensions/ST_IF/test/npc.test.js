@@ -1,7 +1,33 @@
 // Unit tests for npc.js — pure NPC registry + co-location + addressed detection.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addNpc, removeNpc, bindCard, listNpcs, presentNpcs, npcCanonLine, addressedNpc, moveNpc, setFollow, advanceFollowers, deriveNpcName, normalizeRoom, npcBodyCommands } from '../npc.js';
+import { addNpc, removeNpc, bindCard, listNpcs, presentNpcs, npcCanonLine, addressedNpc, moveNpc, setFollow, advanceFollowers, deriveNpcName, normalizeRoom, npcBodyCommands, setPatrol, advancePatrols } from '../npc.js';
+
+test('setPatrol assigns a route (>=2 rooms, parks at first stop); fewer clears it', () => {
+    let l = [{ name: 'reeves', room: 'foyer', blurb: 'butler' }];
+    l = setPatrol(l, 'reeves', ['Foyer', 'Kitchen', 'Servants Hall']);
+    const r = l[0];
+    assert.deepEqual(r.patrol, ['foyer', 'kitchen', 'servantshall']);   // normalized
+    assert.equal(r.patrolIdx, 0);
+    assert.equal(r.room, 'foyer');                                      // parked at route[0]
+    l = setPatrol(l, 'reeves', ['Foyer']);                             // <2 -> clear
+    assert.equal(l[0].patrol, undefined);
+    assert.equal(l[0].patrolIdx, undefined);
+});
+
+test('advancePatrols cycles each patroller one step; skips followers and non-patrollers', () => {
+    let l = [
+        { name: 'reeves', room: 'foyer', patrol: ['foyer', 'kitchen', 'cellar'], patrolIdx: 0 },
+        { name: 'maeve', room: 'library', blurb: 'no route' },                 // no patrol → stays
+        { name: 'bram', room: 'hall', patrol: ['hall', 'study'], patrolIdx: 0, follows: true }, // following → frozen
+    ];
+    l = advancePatrols(l);
+    assert.equal(l.find((n) => n.name === 'reeves').room, 'kitchen');          // 0 → 1
+    assert.equal(l.find((n) => n.name === 'maeve').room, 'library');           // unchanged
+    assert.equal(l.find((n) => n.name === 'bram').room, 'hall');               // follower frozen
+    l = advancePatrols(advancePatrols(l));                                     // 1 → 2 → 0 (wraps)
+    assert.equal(l.find((n) => n.name === 'reeves').room, 'foyer');
+});
 
 test('npcBodyCommands materializes present NPCs and sends the rest off-stage', () => {
     const l = [{ name: 'maeve', room: 'commonroom' }, { name: 'tomas', room: 'taproom' }];
