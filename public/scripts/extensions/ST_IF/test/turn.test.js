@@ -488,6 +488,15 @@ test('together + acts: her validated action runs on the player VM and is attribu
     assert.equal(s.history[s.history.length - 1].companionCmd, 'light lantern', 'recorded for swipe reuse');
 });
 
+test('together + acts: a mirrored action output is not doubled in canon', async () => {
+    const vm = makeActVM();
+    const deps = actDeps('look', vm);                            // companion mirrors the player's 'look'
+    await runTurn(deps, [{ is_user: true, mes: 'I look around' }], 'normal');
+    const block = deps._calls.setPrompt[0];
+    const hits = (block.match(/A dark and damp cellar/g) || []).length;
+    assert.equal(hits, 1, 'identical companion output is deduped, not doubled');
+});
+
 test('death outcome rolls her action back', async () => {
     const vm = makeActVM();
     const deps = actDeps('pull lever', vm);
