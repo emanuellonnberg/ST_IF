@@ -82,6 +82,9 @@ function buildDeps() {
                 (prompt) => qgen({ quietPrompt: prompt, responseLength: 160, skipWIAN: true })),
         onNpcSpeak: async ({ npc, playerText, room }) => {
             const ctx = getContext();
+            const brief = readState(ctx.chatMetadata)?.scenarioBrief;
+            const briefLine = brief ? ` Background everyone here knows: ${brief}` : '';
+            const REPLY_RULE = 'answer the player helpfully and in character — volunteer a relevant detail, observation, or hook from what you know rather than merely deflecting; 1-3 lines of dialogue and a small action. Do not narrate the player or the wider scene.';
             const card = (ctx.characters || []).find((c) => c.name === npc.card || c.avatar === npc.card);
             if (!card) {
                 // Bound card not in the character list: don't go silent — voice the NPC
@@ -90,7 +93,7 @@ function buildDeps() {
                 const persona = npc.blurb || `a figure known as ${npc.name}`;
                 try {
                     const r = await qgen({
-                        quietPrompt: `[You are ${npc.name}, ${persona}. You are at "${room}". The player said: "${playerText}". Reply in character as ${npc.name} — 1-3 lines of dialogue and small action. Do not narrate the player or the wider scene.]`,
+                        quietPrompt: `[You are ${npc.name}, ${persona}.${briefLine} You are at "${room}". The player said: "${playerText}". Reply in character as ${npc.name} — ${REPLY_RULE}]`,
                         responseLength: 160, skipWIAN: true,
                     });
                     postNpcMessage({ name: npc.name }, stripReasoning(r));
@@ -101,7 +104,7 @@ function buildDeps() {
             let reply;
             try {
                 reply = await qgen({
-                    quietPrompt: `[You are ${card.name}, an NPC the player is speaking with. ${persona}\nYou are at "${room}". The player said: "${playerText}". Reply in character as ${card.name} — 1-3 lines of dialogue and small action. Do not narrate the player or the wider scene.]`,
+                    quietPrompt: `[You are ${card.name}, an NPC the player is speaking with. ${persona}${briefLine}\nYou are at "${room}". The player said: "${playerText}". Reply in character as ${card.name} — ${REPLY_RULE}]`,
                     responseLength: 160,
                     skipWIAN: true,
                 });
@@ -486,6 +489,9 @@ async function seedScenario(worldFile, { force = false } = {}) {
     if (!manifest) return;
     const md = getContext().chatMetadata;
     if (!readState(md)) return;
+    // Shared world facts every NPC knows — refreshed on every load (even resume), so NPC
+    // replies are grounded in the scenario's background, not just the card persona.
+    readState(md).scenarioBrief = manifest.brief || '';
     if (!force && (getNpcs(md).length || getQuests(md).length)) return;   // never clobber
     if (force) { setNpcs(md, []); setQuests(md, []); }
 

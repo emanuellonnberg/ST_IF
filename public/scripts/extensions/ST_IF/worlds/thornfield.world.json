@@ -1,4 +1,5 @@
 {
+    "brief": "Last night, during the storm, Lord Ashcroft was found dead at the desk of his study, the door locked from the outside and a glass of red wine at his elbow. Everyone under the roof that night is a suspect: his widow Lady Ashcroft, his niece Miss Vale, the guest Major Blunt, the physician Dr. Crane, and Reeves the butler. The spare key to the study is kept in the kitchen dresser. Dr. Crane examined the body and believes Lord Ashcroft was poisoned. The manor runs from the entrance hall through the dining room, kitchen, wine cellar, drawing room, conservatory and library to the study, with bedrooms upstairs. You are the detective; the constable is still an hour away.",
     "narrator": { "name": "The Storyteller", "file": "cards/narrator.png" },
     "cards": [
         { "name": "Reeves the Butler", "file": "cards/reeves.png" },
