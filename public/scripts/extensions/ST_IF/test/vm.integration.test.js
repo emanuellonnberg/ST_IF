@@ -812,6 +812,22 @@ test('glulx: persisted snapshots are packed and much smaller than raw', async ()
     assert.ok(packed.length < 30000, `packed save should be far under the ~72KB raw (got ${packed.length})`);
 });
 
+test('glulx: char-input prompts (press-any-key / start menus) are auto-advanced', async () => {
+    // Real catalog games (Inform 7 especially) gate the opening on single-key prompts;
+    // keyprompt.ulx reproduces that (two KeyCharPrimitive gates before the story).
+    const keyGame = new Uint8Array(readFileSync(new URL('./fixtures/keyprompt.ulx', import.meta.url)));
+    const vm = new IFVM();
+    await vm.load(keyGame);
+    assert.match(vm.getIntro(), /beyond the key gate/i);     // both key gates auto-answered
+    assert.equal(vm.getStatus().location, 'Anteroom');
+    assert.match(vm.step('north'), /Hall/);                  // and normal line play follows
+    const snap = vm.save();
+    const vm2 = new IFVM();
+    await vm2.load(keyGame);
+    vm2.restore(snap);
+    assert.equal(vm2.getStatus().location, 'Hall');          // snapshots unaffected
+});
+
 test('glulx: query has zero net game effect', async () => {
     const vm = new IFVM();
     await vm.load(glulxGarden);
