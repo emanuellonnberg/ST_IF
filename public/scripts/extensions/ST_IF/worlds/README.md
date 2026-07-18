@@ -40,9 +40,10 @@ room + portable light, a switchable lamp, and takeable objects.
   the barkeep then pays the bounded reward (the LLM proposes, the engine validates, the VM
   grants real gold).
 - `garden-glulx.ulx` — the garden compiled as **Glulx** (`inform6 -G`): the demo for ST_IF's
-  second engine. Glulx stories (`.ulx`) run on the vendored Quixe interpreter through the same
-  Glk plumbing as the Z-machine — load it from the picker or upload any `.ulx` file. (Blorb-
-  wrapped `.gblorb` files are not unpacked yet.)
+  second engine. Glulx stories run on the vendored Quixe interpreter through the same Glk
+  plumbing as the Z-machine — load it from the picker or upload any `.ulx`, or a Blorb-wrapped
+  `.gblorb`/`.zblorb` (the executable chunk is unwrapped automatically). Glulx snapshots are
+  packed (XOR-vs-image + RLE) before persisting, so per-turn saves stay small.
 - `thornfield.inf` / `thornfield.z5` — "Thornfield Manor", a one-night **murder mystery**: Lord
   Ashcroft lies dead in his locked study and you are the detective. ~12 rooms with a real puzzle
   chain held as ground truth — a **locked study door** (spare key in the kitchen dresser), a wall
