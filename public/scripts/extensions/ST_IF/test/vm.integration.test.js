@@ -721,3 +721,19 @@ test('expanse: planReplay rebuilds a looped graph (import round-trip)', async ()
     assert.match(vm.step('south'), /\bc\b/i);
     assert.match(vm.step('west'), /Origin/i);             // loop edge reconstructed
 });
+
+// --- Glulx (Quixe) — engine wiring proven end to end (boot/step/status). --------
+// NOTE: save()/restore()/query() are NOT yet reliable on Glulx (Quixe's autorestore
+// vs our ifvms-adapted glkapi), so this exercises only the working surface. The
+// remaining snapshot work is tracked in the branch/PR.
+const glulxGarden = new Uint8Array(readFileSync(new URL('./fixtures/garden.ulx', import.meta.url)));
+
+test('glulx: Quixe boots a real .ulx and runs commands (no snapshot)', async () => {
+    const vm = new IFVM();
+    await vm.load(glulxGarden);
+    assert.match(vm.getIntro(), /garden/i);                 // opening scene captured
+    assert.equal(vm.getStatus().location, 'Porch');         // Glk status line parsed
+    assert.match(vm.step('take lantern'), /Taken/i);        // a command runs at ground truth
+    vm.step('north');
+    assert.notEqual(vm.getStatus().location, 'Porch');      // movement works
+});

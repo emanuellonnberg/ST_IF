@@ -12,6 +12,8 @@
 import { createGlk } from './lib/glkapi.js';
 import ZVM from './lib/zvm.js';
 import ZVMDispatch from './lib/dispatch.js';
+import { QuixeClass } from './lib/quixe.js';
+import { GiDispaClass } from './lib/gidispa.js';
 
 const METRICS = {
     buffercharheight: 1, buffercharwidth: 1, buffermarginx: 0, buffermarginy: 0,
@@ -172,19 +174,38 @@ export class IFVM {
         const Glk = createGlk();
         const glkote = new HeadlessGlkOte();
         const dialog = new HeadlessDialog(snapshot);
-        const vm = new ZVM();
-        const options = {
-            vm, Glk, GlkOte: glkote, Dialog: dialog, GiDispa: new ZVMDispatch(),
-            do_vm_autosave: snapshot ? 1 : 0,
-        };
-        // Always hand the VM its OWN copy of the bytes: ZVM keeps a live reference
+        // Always hand the VM its OWN copy of the bytes: an engine keeps a live reference
         // to the story buffer for dynamic memory, so two VM instances sharing one
         // ArrayBuffer would corrupt each other (the player and companion VMs do).
-        vm.prepare(new Uint8Array(storyBytes), options);
-        Glk.init(options);   // synchronously runs the VM to its first input request
+        const bytes = new Uint8Array(storyBytes);
+        // 'Glul' magic → a Glulx story, run by Quixe; otherwise a Z-machine story, run by ZVM.
+        // Both drive the same headless Glk/GlkOte, so step/save/restore/status are shared.
+        const isGlulx = bytes[0] === 0x47 && bytes[1] === 0x6C && bytes[2] === 0x75 && bytes[3] === 0x6C;
+        let vm;
+        let giDispa = null;
+        if (isGlulx) {
+            vm = new QuixeClass();
+            giDispa = new GiDispaClass();
+            // Our glkapi (ifvms-adapted) speaks a slightly different dialect than Quixe's
+            // native Plotkin glkapi — bridge the three gaps:
+            giDispa.set_vm = (v) => giDispa.init({ vm: v, io: Glk });          // ifvms: set_vm; Quixe: init
+            Glk.getlibrary = (n) => ({ Dialog: dialog, GlkOte: glkote, GiDispa: giDispa, GiLoad: null, Blorb: null }[n] ?? null);
+            const options = { vm, io: Glk, Glk, GlkOte: glkote, Dialog: dialog, GiDispa: giDispa, do_vm_autosave: snapshot ? 1 : 0 };
+            vm.init(bytes, options);          // Quixe loads the image (ZVM would use prepare)
+            const quixeStart = vm.start.bind(vm);
+            vm.init = () => quixeStart();      // our glkapi RUNS the VM via VM.init() on the GlkOte 'init' event; Quixe runs via start()
+            Glk.init(options);
+        } else {
+            vm = new ZVM();
+            const options = { vm, Glk, GlkOte: glkote, Dialog: dialog, GiDispa: new ZVMDispatch(), do_vm_autosave: snapshot ? 1 : 0 };
+            vm.prepare(bytes, options);
+            Glk.init(options);   // synchronously runs the VM to its first input request
+        }
         this._glkote = glkote;
         this._dialog = dialog;
         this._vm = vm;
+        this._giDispa = giDispa;
+        this._isGlulx = isGlulx;
         this._loaded = true;
         const boot = glkote.takeBuffer();   // opening scene (fresh load) or redraw (restore)
         if (!snapshot) this._intro = cleanOutput(boot, '');
@@ -272,7 +293,14 @@ export class IFVM {
     /** Serialize full VM state to a base64 string. */
     save() {
         if (!this._loaded) throw new Error('ST_IF: no story loaded');
-        this._vm.do_autosave(1);
+        if (this._isGlulx) {
+            // Quixe autosaves the VM state at a glk_select boundary; check_autosave()
+            // returns the event-structure address it needs (or null before the first input).
+            const ev = this._giDispa.check_autosave();
+            this._vm.do_autosave(ev == null ? 0 : ev);
+        } else {
+            this._vm.do_autosave(1);   // ZVM: the arg is a mode flag, not an address
+        }
         return btoa(JSON.stringify(this._dialog._snap));
     }
 
