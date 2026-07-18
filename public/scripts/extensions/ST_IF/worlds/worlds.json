@@ -5,5 +5,6 @@
     { "name": "Garden (expandable)", "file": "garden-expanse.z5", "id": "garden" },
     { "name": "Apartment (expandable)", "file": "apartment-expanse.z5", "id": "apartment" },
     { "name": "The Adventurer's Rest", "file": "tavern.z5" },
-    { "name": "Thornfield Manor (mystery)", "file": "thornfield.z5" }
+    { "name": "Thornfield Manor (mystery)", "file": "thornfield.z5" },
+    { "name": "Garden (Glulx demo)", "file": "garden-glulx.ulx" }
 ]

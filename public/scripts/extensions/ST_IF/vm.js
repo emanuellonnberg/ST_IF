@@ -12,6 +12,8 @@
 import { createGlk } from './lib/glkapi.js';
 import ZVM from './lib/zvm.js';
 import ZVMDispatch from './lib/dispatch.js';
+import { QuixeClass } from './lib/quixe.js';
+import { GiDispaClass } from './lib/gidispa.js';
 
 const METRICS = {
     buffercharheight: 1, buffercharwidth: 1, buffermarginx: 0, buffermarginy: 0,
@@ -172,19 +174,43 @@ export class IFVM {
         const Glk = createGlk();
         const glkote = new HeadlessGlkOte();
         const dialog = new HeadlessDialog(snapshot);
-        const vm = new ZVM();
-        const options = {
-            vm, Glk, GlkOte: glkote, Dialog: dialog, GiDispa: new ZVMDispatch(),
-            do_vm_autosave: snapshot ? 1 : 0,
-        };
-        // Always hand the VM its OWN copy of the bytes: ZVM keeps a live reference
+        // Always hand the VM its OWN copy of the bytes: an engine keeps a live reference
         // to the story buffer for dynamic memory, so two VM instances sharing one
         // ArrayBuffer would corrupt each other (the player and companion VMs do).
-        vm.prepare(new Uint8Array(storyBytes), options);
-        Glk.init(options);   // synchronously runs the VM to its first input request
+        const bytes = new Uint8Array(storyBytes);
+        // 'Glul' magic → a Glulx story, run by Quixe; otherwise a Z-machine story, run by ZVM.
+        // Both drive the same headless Glk/GlkOte, so step/save/restore/status are shared.
+        const isGlulx = bytes[0] === 0x47 && bytes[1] === 0x6C && bytes[2] === 0x75 && bytes[3] === 0x6C;
+        let vm;
+        let giDispa = null;
+        if (isGlulx) {
+            vm = new QuixeClass();
+            giDispa = new GiDispaClass();
+            // Our glkapi (ifvms-adapted) speaks a slightly different dialect than Quixe's
+            // native Plotkin glkapi — bridge the three gaps:
+            giDispa.set_vm = (v) => giDispa.init({ vm: v, io: Glk });          // ifvms: set_vm; Quixe: init
+            Glk.getlibrary = (n) => ({ Dialog: dialog, GlkOte: glkote, GiDispa: giDispa, GiLoad: null, Blorb: null }[n] ?? null);
+            // do_vm_autosave is ALWAYS on for Glulx: the glkapi itself then autosaves into
+            // the Dialog at every input boundary (via GiDispa.check_autosave), which is the
+            // only moment Quixe's partial-operand bookkeeping is valid. save() just reads
+            // the latest snapshot — calling vm.do_autosave() manually at an arbitrary idle
+            // moment corrupts the resume stack (the re-executed @glk(select) pops garbage).
+            const options = { vm, io: Glk, Glk, GlkOte: glkote, Dialog: dialog, GiDispa: giDispa, do_vm_autosave: 1 };
+            vm.init(bytes, options);          // Quixe loads the image (ZVM would use prepare)
+            const quixeStart = vm.start.bind(vm);
+            vm.init = () => quixeStart();      // our glkapi RUNS the VM via VM.init() on the GlkOte 'init' event; Quixe runs via start()
+            Glk.init(options);
+        } else {
+            vm = new ZVM();
+            const options = { vm, Glk, GlkOte: glkote, Dialog: dialog, GiDispa: new ZVMDispatch(), do_vm_autosave: snapshot ? 1 : 0 };
+            vm.prepare(bytes, options);
+            Glk.init(options);   // synchronously runs the VM to its first input request
+        }
         this._glkote = glkote;
         this._dialog = dialog;
         this._vm = vm;
+        this._giDispa = giDispa;
+        this._isGlulx = isGlulx;
         this._loaded = true;
         const boot = glkote.takeBuffer();   // opening scene (fresh load) or redraw (restore)
         if (!snapshot) this._intro = cleanOutput(boot, '');
@@ -272,7 +298,13 @@ export class IFVM {
     /** Serialize full VM state to a base64 string. */
     save() {
         if (!this._loaded) throw new Error('ST_IF: no story loaded');
-        this._vm.do_autosave(1);
+        if (!this._isGlulx) {
+            this._vm.do_autosave(1);   // ZVM: an explicit save; the arg is a mode flag
+        }
+        // Glulx: the glkapi already autosaved into the Dialog at the last input boundary
+        // (see _boot) — the stored snapshot IS the state after the last completed step.
+        // Before the first input it is null; restoring null re-boots fresh, which is
+        // exactly the turn-zero state, so the round-trip stays correct.
         return btoa(JSON.stringify(this._dialog._snap));
     }
 

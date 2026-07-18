@@ -721,3 +721,72 @@ test('expanse: planReplay rebuilds a looped graph (import round-trip)', async ()
     assert.match(vm.step('south'), /\bc\b/i);
     assert.match(vm.step('west'), /Origin/i);             // loop edge reconstructed
 });
+
+// --- Glulx (Quixe) — the full IFVM surface against a real .ulx. ---------------
+// Snapshots: the glkapi autosaves into the Dialog at every input boundary (the only
+// moment Quixe's resume bookkeeping is valid); save() reads that snapshot. Manually
+// calling vm.do_autosave() at idle corrupts the resume stack — never do that.
+const glulxGarden = new Uint8Array(readFileSync(new URL('./fixtures/garden.ulx', import.meta.url)));
+
+test('glulx: Quixe boots a real .ulx and runs commands', async () => {
+    const vm = new IFVM();
+    await vm.load(glulxGarden);
+    assert.match(vm.getIntro(), /garden/i);                 // opening scene captured
+    assert.equal(vm.getStatus().location, 'Porch');         // Glk status line parsed
+    assert.match(vm.step('take lantern'), /Taken/i);        // a command runs at ground truth
+    vm.step('north');
+    assert.notEqual(vm.getStatus().location, 'Porch');      // movement works
+});
+
+test('glulx: save/restore round-trips (in-place, cross-instance, and turn zero)', async () => {
+    const vm = new IFVM();
+    await vm.load(glulxGarden);
+    const zero = vm.save();                                  // pre-input snapshot
+    vm.step('take lantern');
+    const snap = vm.save();
+    vm.step('drop lantern');
+    assert.doesNotMatch(vm.query('inventory'), /lantern/);   // really dropped
+    vm.restore(snap);
+    assert.match(vm.query('inventory'), /lantern/);          // and back
+    assert.match(vm.step('north'), /Lawn/);                  // play continues after restore
+    // cross-instance: a second VM resumes the same snapshot
+    const vm2 = new IFVM();
+    await vm2.load(glulxGarden);
+    vm2.restore(snap);
+    assert.match(vm2.query('inventory'), /lantern/);
+    assert.equal(vm2.getStatus().location, 'Porch');
+    // turn-zero snapshot restores to the fresh start
+    vm.restore(zero);
+    assert.doesNotMatch(vm.query('inventory'), /lantern/);
+    assert.equal(vm.getStatus().location, 'Porch');
+});
+
+test('glulx: a save taken after a query still restores in a fresh VM (turn.js shape)', async () => {
+    // Regression (PR #29 review): the real turn flow queries ('inventory') between the
+    // step and the persist. Under the old manual-do_autosave design that produced a
+    // snapshot Quixe rejected on reload ("glk select: null argument"). The library-
+    // driven autosave re-seeds the Dialog on every restore, so this stays valid.
+    const vm = new IFVM();
+    await vm.load(glulxGarden);
+    vm.step('take lantern');
+    vm.step('north');
+    vm.query('inventory');
+    vm.query('look');
+    const snap = vm.save();
+    const fresh = new IFVM();
+    await fresh.load(glulxGarden);
+    fresh.restore(snap);                                     // the persisted-state reload path
+    assert.equal(fresh.getStatus().location, 'Lawn');
+    assert.match(fresh.query('inventory'), /lantern/);
+    assert.match(fresh.step('south'), /Porch/);              // plays on after reload
+});
+
+test('glulx: query has zero net game effect', async () => {
+    const vm = new IFVM();
+    await vm.load(glulxGarden);
+    vm.step('take lantern');
+    const before = vm.getStatus();
+    assert.match(vm.query('inventory'), /lantern/);
+    assert.deepEqual(vm.getStatus(), before);                // moves/location unchanged
+    assert.match(vm.step('look'), /Porch/i);                 // still playable
+});
