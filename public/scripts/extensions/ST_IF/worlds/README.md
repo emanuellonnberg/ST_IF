@@ -95,6 +95,16 @@ leave the room). Dialogue still flows through the card (the body is just the han
 modelled. The engine's `x*` verbs are all `meta`, so this per-turn materialisation never advances
 the world clock (cooking timers etc. are safe).
 
+## Per-chat stories
+
+Each chat remembers **its own game**: the loaded story is referenced in the chat's metadata,
+so a Thornfield chat, a tavern chat, and a Trinity chat coexist — switching chats reloads the
+right game (and its snapshot) automatically. Bundled worlds re-fetch by filename; **uploaded**
+games are kept once in the settings **story library** and referenced by key (`/if-stories` lists
+or removes entries). Chats from before per-chat refs keep using the last-loaded story; a chat
+whose story is no longer available is restarted on the current one (with a warning) rather than
+restoring a snapshot into the wrong game.
+
 ## Scenario manifests (one-step setup)
 
 A bundled world may ship a sidecar `<basename>.world.json` that auto-seeds its NPCs, quests,

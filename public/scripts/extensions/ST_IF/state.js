@@ -159,6 +159,17 @@ export function setQuests(metadata, list) {
     s.quests = Array.isArray(list) ? list : [];
 }
 
+/** Per-chat story reference: which game THIS chat runs (see storylib.js for shapes). */
+export function getStoryRef(metadata) {
+    return metadata[KEY]?.storyRef ?? null;
+}
+
+export function setStoryRef(metadata, ref) {
+    const s = metadata[KEY];
+    if (!s) throw new Error('ST_IF state not initialized');
+    s.storyRef = ref;
+}
+
 /** Narration mode: 'narrate' (faithful play) | 'build' (world-creation) | 'gm' (lively, voices minor NPCs). */
 export const MODES = ['narrate', 'build', 'gm'];
 

@@ -29,7 +29,8 @@ export const defaultSettings = {
     maxGrant: 25,                    // cap on a single NPC gold grant/take
     storyName: '',
     storyId: '',       // bundled-world id (for export/import base matching)
-    storyBase64: '',   // the .z5/.z8 bytes, base64
+    storyBase64: '',   // the last-loaded story bytes, base64 (legacy single slot)
+    storyLibrary: {},  // uploaded games by key: { name, base64 } — chats reference these
 };
 
 export function getSettings() {
