@@ -6,14 +6,16 @@
         { "name": "Lady Ashcroft", "file": "cards/ashcroft.png" },
         { "name": "Dr. Crane", "file": "cards/crane.png" },
         { "name": "Miss Vale", "file": "cards/vale.png" },
-        { "name": "Major Blunt", "file": "cards/blunt.png" }
+        { "name": "Major Blunt", "file": "cards/blunt.png" },
+        { "name": "Mrs. Dunn", "file": "cards/dunn.png" }
     ],
     "npcs": [
         { "name": "reeves", "room": "entrancehall", "blurb": "Reeves, the loyal, watchful butler", "card": "Reeves the Butler", "patrol": ["entrancehall", "diningroom", "kitchen"] },
         { "name": "lady", "room": "drawingroom", "blurb": "Lady Ashcroft, the composed widow", "card": "Lady Ashcroft", "patrol": ["drawingroom", "diningroom"] },
         { "name": "crane", "room": "library", "blurb": "Dr. Crane, the candid physician who examined the body", "card": "Dr. Crane", "patrol": ["library", "entrancehall"] },
         { "name": "vale", "room": "conservatory", "blurb": "Miss Vale, the nervous niece", "card": "Miss Vale", "patrol": ["conservatory", "library"] },
-        { "name": "blunt", "room": "drawingroom", "blurb": "Major Blunt, the blustering ex-army guest", "card": "Major Blunt", "patrol": ["drawingroom", "conservatory"] }
+        { "name": "blunt", "room": "drawingroom", "blurb": "Major Blunt, the blustering ex-army guest", "card": "Major Blunt", "patrol": ["drawingroom", "conservatory"] },
+        { "name": "dunn", "room": "kitchen", "blurb": "Mrs. Dunn, the gossipy cook who keeps to her kitchen", "card": "Mrs. Dunn" }
     ],
     "quests": [
         { "id": "case", "giver": "crane", "goal": "gather the evidence and name Lord Ashcroft's killer (the real verdict is the in-game `accuse`)", "reward": { "effect": "flag", "flag": "case_solved" } }

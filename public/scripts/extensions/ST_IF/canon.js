@@ -28,7 +28,7 @@ function statusLine(status) {
  * @param {{outputs: string[], status: {location:string, score:number|null, moves:number|null}, ranCommands: boolean, injectStateOnRp: boolean, companionPresent?: boolean, companionActionCmd?: string|null}} args
  * @returns {string} canon block, or '' when nothing should be injected
  */
-export function buildCanonBlock({ outputs, status, ranCommands, injectStateOnRp, companionPresent, companionActionCmd, npcLine, npcSpeakingFor, questLine, effectLine, mode }) {
+export function buildCanonBlock({ outputs, status, ranCommands, injectStateOnRp, companionPresent, companionActionCmd, npcLine, npcSpeakingFor, whereaboutsLine, questLine, effectLine, mode }) {
     const modeLine = modeDirective(mode);
     if (!ranCommands) {
         if (!injectStateOnRp) return '';
@@ -46,6 +46,7 @@ export function buildCanonBlock({ outputs, status, ranCommands, injectStateOnRp,
     if (companionPresent) lines.push('{{char}} is here with you.');
     if (npcLine) lines.push(npcLine);
     if (npcSpeakingFor) lines.push(`${npcSpeakingFor} is here and answers in their OWN message right after yours. Narrate only {{user}}'s approach/words and the setting — do NOT speak, quote, or describe ${npcSpeakingFor}'s reply, reaction, or expression; leave all of that to them. End on {{user}} addressing them.`);
+    if (whereaboutsLine) lines.push(`${whereaboutsLine} (Share these whereabouts only if {{user}} asks where someone is, or has them look around / ask a servant.)`);
     if (questLine) lines.push(questLine);
     if (effectLine) lines.push(effectLine);
     return lines.join('\n');

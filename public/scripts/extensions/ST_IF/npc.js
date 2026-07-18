@@ -110,6 +110,15 @@ export function presentNpcs(list, roomSlug) {
     return (list ?? []).filter((n) => normalizeRoom(n.room) === r);
 }
 
+/** Where the card-bound NPCs who are NOT here are right now, so the narrator can answer
+ *  "where is X?". '' if none are elsewhere. ('away' NPCs are hidden, not located.) */
+export function whereaboutsLine(list, hereRoom) {
+    const r = normalizeRoom(hereRoom);
+    const away = (list ?? []).filter((n) => n.card && n.room && normalizeRoom(n.room) !== r && normalizeRoom(n.room) !== 'away');
+    if (!away.length) return '';
+    return 'Elsewhere right now: ' + away.map((n) => `${n.name} is in the ${n.room}`).join('; ') + '.';
+}
+
 /** Canon line naming the NPCs present in the room, or '' if none. */
 export function npcCanonLine(present) {
     if (!present || !present.length) return '';

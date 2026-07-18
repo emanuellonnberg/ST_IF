@@ -7,7 +7,7 @@ import { buildCanonBlock, buildApartCanonBlock } from './canon.js';
 import { compactInventory } from './clean.js';
 import { parseRoomJson, sanitizeRoom, buildMetaCommands, blockedMove, directionSuggested, addCell, validateConnections } from './worldgen.js';
 import { reverseDir } from './worldmap.js';
-import { presentNpcs, npcCanonLine, addressedNpc, advanceFollowers, advancePatrols, npcBodyCommands } from './npc.js';
+import { presentNpcs, npcCanonLine, addressedNpc, advanceFollowers, advancePatrols, npcBodyCommands, whereaboutsLine } from './npc.js';
 import { questsForGiver, questCanonLine } from './quest.js';
 
 const SKIP_TYPES = new Set(['quiet', 'impersonate']);
@@ -186,23 +186,35 @@ export async function runTurn(deps, chat, type) {
     }
 
     const status = vm.getStatus();
+    const movedRoom = status.location !== statusForPrompt.location;
 
-    // When the room changed this turn the world "ticks": followers travel to the new
-    // room, and patrolling NPCs advance one step along their routes (so suspects drift
-    // around while you explore). Lingering in one room freezes them.
-    if (status.location !== statusForPrompt.location) {
-        setNpcs(metadata, advancePatrols(advanceFollowers(getNpcs(metadata), status.location)));
-    }
+    // Followers travel to the player's new room so they arrive WITH you.
+    if (movedRoom) setNpcs(metadata, advanceFollowers(getNpcs(metadata), status.location));
 
-    // NPCs present in the player's room: name them in canon (narrator voices them).
-    // A present, card-bound NPC the player addresses speaks for itself after the
-    // narrator turn — stash it for index.js to fire on GENERATION_ENDED.
+    // Who is here AS YOU ARRIVE — computed before patrols tick this turn, so you actually
+    // meet the NPC you walked toward (otherwise a patroller would step out as you step in).
     const present = presentNpcs(getNpcs(metadata), status.location);
     const npcLine = npcCanonLine(present);
     const npcSpeaker = addressedNpc(player.text, present);
     readState(metadata).pendingNpcSpeak = npcSpeaker
         ? { npc: npcSpeaker, playerText: player.text, room: status.location }
         : null;
+    // First-encounter greeting: on walking into a room, the first card-bound NPC you have
+    // not met yet introduces itself after the narrator turn. Skipped when you address
+    // someone this turn (that reply takes precedence). Marked greeted so it fires once.
+    let greet = null;
+    if (movedRoom && !npcSpeaker) {
+        const toGreet = present.find((n) => n.card && !n.greeted);
+        if (toGreet) {
+            greet = { npc: toGreet, room: status.location };
+            setNpcs(metadata, getNpcs(metadata).map((n) => (n.name === toGreet.name ? { ...n, greeted: true } : n)));
+        }
+    }
+    readState(metadata).pendingNpcGreet = greet;
+    // Current whereabouts of the card NPCs who are elsewhere (so the narrator can answer
+    // "where is X?"), captured now — before the patrollers drift for the next turn.
+    const whereabouts = whereaboutsLine(getNpcs(metadata), status.location);
+    if (movedRoom) setNpcs(metadata, advancePatrols(getNpcs(metadata)));
     // Active quests offered by a present giver → reflected in canon so the NPC raises them.
     const presentQuests = present.flatMap((n) => questsForGiver(getQuests(metadata), n.name));
     const questLine = questCanonLine(presentQuests);
@@ -212,7 +224,6 @@ export async function runTurn(deps, chat, type) {
 
     // Capture the current room description for the persistent display:
     // update on a room change (the move output IS the new room) or an explicit look.
-    const movedRoom = status.location !== statusForPrompt.location;
     const lookish = cmds.some((c) => /^(look|l|examine room)$/i.test(String(c).trim()));
     if ((movedRoom || lookish) && outputs.length) {
         setRoomDescription(metadata, outputs[outputs.length - 1]);
@@ -385,7 +396,7 @@ export async function runTurn(deps, chat, type) {
 
         if (together) {
             const statusForCanon = companionActionCmd ? vm.getStatus() : status;
-            const block = buildCanonBlock({ outputs, status: statusForCanon, ranCommands: cmds.length > 0, injectStateOnRp: settings.injectStateOnRp, companionPresent: true, companionActionCmd, npcLine, npcSpeakingFor: npcSpeaker?.name ?? null, questLine, effectLine, mode: canonMode });
+            const block = buildCanonBlock({ outputs, status: statusForCanon, ranCommands: cmds.length > 0, injectStateOnRp: settings.injectStateOnRp, companionPresent: true, companionActionCmd, npcLine, npcSpeakingFor: npcSpeaker?.name ?? null, whereaboutsLine: whereabouts, questLine, effectLine, mode: canonMode });
             if (block) setPrompt(block);
         } else {
             const playerShouted = detectShout(player.text);
@@ -430,6 +441,7 @@ export async function runTurn(deps, chat, type) {
         injectStateOnRp: settings.injectStateOnRp,
         npcLine,
         npcSpeakingFor: npcSpeaker?.name ?? null,
+        whereaboutsLine: whereabouts,
         questLine,
         effectLine,
         mode: canonMode,

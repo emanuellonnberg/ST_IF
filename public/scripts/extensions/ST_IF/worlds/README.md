@@ -74,6 +74,10 @@ around a manor.
 your current room, bound, with the address-name auto-derived from the card (its first word, e.g.
 `tomas`). The full card name stays as the display/voice; you just address them as `tomas`.
 
+**Greetings.** The first time you walk into a room holding a card-bound NPC you have not met,
+that NPC introduces itself with a short line (a one-time greeting fired after the narrator's
+turn) — unless you addressed someone the same turn, in which case that reply takes precedence.
+
 **Physical interaction.** A present registry NPC is also given a real Z-machine **body** each turn
 (`effects.h` NPC pool), so the parser can act on them: `examine maeve`, `give key to maeve`,
 `show coin to tomas`. Items you give really transfer to the NPC (and stay with them even when they

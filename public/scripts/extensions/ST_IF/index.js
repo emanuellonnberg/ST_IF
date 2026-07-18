@@ -80,11 +80,15 @@ function buildDeps() {
         companionDecide: (playerText, playerRoom, companionRoom, playerMoves) =>
             decideAgency(playerText, playerRoom, companionRoom, playerMoves, getSettings().companionBias,
                 (prompt) => qgen({ quietPrompt: prompt, responseLength: 160, skipWIAN: true })),
-        onNpcSpeak: async ({ npc, playerText, room }) => {
+        onNpcSpeak: async ({ npc, playerText, room, greet }) => {
             const ctx = getContext();
             const brief = readState(ctx.chatMetadata)?.scenarioBrief;
             const briefLine = brief ? ` Background everyone here knows: ${brief}` : '';
             const REPLY_RULE = 'answer the player helpfully and in character — volunteer a relevant detail, observation, or hook from what you know rather than merely deflecting; 1-3 lines of dialogue and a small action. Do not narrate the player or the wider scene.';
+            // A greeting is fired when the player first walks in; otherwise it's a reply.
+            const task = greet
+                ? 'The player has just walked in and you have not spoken yet. Greet and briefly introduce yourself in character'
+                : `The player said: "${playerText}". Reply in character`;
             const card = (ctx.characters || []).find((c) => c.name === npc.card || c.avatar === npc.card);
             if (!card) {
                 // Bound card not in the character list: don't go silent — voice the NPC
@@ -93,7 +97,7 @@ function buildDeps() {
                 const persona = npc.blurb || `a figure known as ${npc.name}`;
                 try {
                     const r = await qgen({
-                        quietPrompt: `[You are ${npc.name}, ${persona}.${briefLine} You are at "${room}". The player said: "${playerText}". Reply in character as ${npc.name} — ${REPLY_RULE}]`,
+                        quietPrompt: `[You are ${npc.name}, ${persona}.${briefLine} You are at "${room}". ${task} as ${npc.name} — ${REPLY_RULE}]`,
                         responseLength: 160, skipWIAN: true,
                     });
                     postNpcMessage({ name: npc.name }, stripReasoning(r));
@@ -104,7 +108,7 @@ function buildDeps() {
             let reply;
             try {
                 reply = await qgen({
-                    quietPrompt: `[You are ${card.name}, an NPC the player is speaking with. ${persona}${briefLine}\nYou are at "${room}". The player said: "${playerText}". Reply in character as ${card.name} — ${REPLY_RULE}]`,
+                    quietPrompt: `[You are ${card.name}, an NPC the player is speaking with. ${persona}${briefLine}\nYou are at "${room}". ${task} as ${card.name} — ${REPLY_RULE}]`,
                     responseLength: 160,
                     skipWIAN: true,
                 });
@@ -113,7 +117,7 @@ function buildDeps() {
                 return;
             }
             postNpcMessage(card, stripReasoning(reply));
-            await maybeFireEffect({ npc, playerText, room, reply });
+            if (!greet) await maybeFireEffect({ npc, playerText, room, reply });   // a passive greeting fires no effects
         },
         onNarratePlayerRoom: async ({ playerRoom, outputs, companionDir }) => {
             const result = (outputs || []).join('\n').trim() || '(you wait)';
@@ -694,8 +698,10 @@ function registerSlashCommands() {
                 const n = list.find((x) => x.name === name);
                 return n?.patrol ? `"${name}" now patrols: ${n.patrol.join(' → ')}.` : `Cleared "${name}"'s patrol.`;
             }
-            if (!list.length) return 'No NPCs yet. /if-npc add <name> @ <room> : <blurb>';
-            return list.map((n) => `${n.name} @ ${n.room}${n.follows ? ' (following)' : ''}${n.patrol ? ` (patrol: ${n.patrol.join('→')})` : ''}${n.card ? ` (card: ${n.card})` : ''} — ${n.blurb}`).join('\n');
+            if (!list.length) { const m = 'No NPCs yet. /if-npc add <name> @ <room> : <blurb>'; postComment(`*(NPCs)* ${m}`); return m; }
+            const out = list.map((n) => `${n.name} @ ${n.room}${n.follows ? ' (following)' : ''}${n.patrol ? ` (patrol: ${n.patrol.join('→')})` : ''}${n.card ? ` (card: ${n.card})` : ''} — ${n.blurb}`).join('\n');
+            postComment('*(NPCs)*\n```\n' + out + '\n```');   // slash-command returns aren't shown unpiped; post it visibly
+            return out;
         },
     }));
 
@@ -869,6 +875,14 @@ jQuery(async () => {
         if (pend) {
             st.pendingNpcSpeak = null;
             try { await buildDeps().onNpcSpeak(pend); } catch (e) { console.error('[ST_IF] npc speak', e); }
+        }
+        // First-encounter greeting (only when you didn't also address someone this turn).
+        const greet = st?.pendingNpcGreet;
+        if (greet && !pend) {
+            st.pendingNpcGreet = null;
+            try { await buildDeps().onNpcSpeak({ ...greet, greet: true }); } catch (e) { console.error('[ST_IF] npc greet', e); }
+        } else if (greet) {
+            st.pendingNpcGreet = null;
         }
     });
     await ensureStoryLoaded();

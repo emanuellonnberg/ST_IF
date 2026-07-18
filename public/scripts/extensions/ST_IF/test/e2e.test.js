@@ -170,6 +170,30 @@ test('e2e: a patrolling NPC advances a step when the player changes room', async
     assert.equal(reeves.patrolIdx, 1);
 });
 
+test('e2e: you meet a patroller you walk toward — present before patrols tick', async () => {
+    const { vm, metadata } = await loadTavern();
+    // Blunt is in the Taproom now, patrolling taproom<->commonroom.
+    setNpcs(metadata, [{ name: 'blunt', room: 'taproom', card: 'Major Blunt', blurb: 'a guest', patrol: ['taproom', 'commonroom'], patrolIdx: 0 }]);
+    const deps = makeDeps(vm, metadata, { 'i head east': ['east'] });
+    await play(deps, [], 'I head east');                         // Common Room -> Taproom (into Blunt's room)
+    assert.equal(readState(metadata).pendingNpcGreet?.npc?.name, 'blunt');   // met as you arrive
+    assert.equal(getNpcs(metadata).find((n) => n.name === 'blunt').room, 'commonroom'); // only THEN drifts on
+});
+
+test('e2e: meeting a card NPC queues a one-time greeting', async () => {
+    const { vm, metadata } = await loadTavern();
+    setNpcs(metadata, [{ name: 'maeve', room: 'taproom', card: 'Old Maeve', blurb: 'a sly regular' }]);
+    const deps = makeDeps(vm, metadata, { 'i head east': ['east'], 'i head west': ['west'] });
+    const chat = [];
+    await play(deps, chat, 'I head east');                       // Common Room -> Taproom: meet Maeve
+    assert.equal(readState(metadata).pendingNpcGreet?.npc?.name, 'maeve');
+    assert.equal(getNpcs(metadata).find((n) => n.name === 'maeve').greeted, true);
+    readState(metadata).pendingNpcGreet = null;                  // (the GENERATION_ENDED handler clears it)
+    await play(deps, chat, 'I head west');                       // back to Common Room
+    await play(deps, chat, 'I head east');                       // into the Taproom again
+    assert.equal(readState(metadata).pendingNpcGreet, null);     // already met -> no re-greeting
+});
+
 test('e2e: a swipe reuses cached outputs and does not re-step the VM', async () => {
     const { vm, metadata } = await loadTavern();
     const deps = makeDeps(vm, metadata, { 'i head east': ['east'] });
