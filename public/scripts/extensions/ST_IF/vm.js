@@ -96,8 +96,10 @@ class HeadlessGlkOte {
 
     _updateInputs(inputs) {
         this.lineRequested = false;
+        this.charRequested = false;
         inputs.forEach((inp) => {
             if (inp.type === 'line') { this.lineRequested = true; this.lineWindowId = inp.id; }
+            if (inp.type === 'char') { this.charRequested = true; this.charWindowId = inp.id; }
         });
     }
 
@@ -105,7 +107,7 @@ class HeadlessGlkOte {
         const res = { type, gen: this.generation };
         if (win) res.window = win.id;
         if (type === 'init') { res.metrics = val; res.support = []; }
-        if (type === 'line') res.value = val;
+        if (type === 'line' || type === 'char') res.value = val;
         this.interface.accept(res);
     }
 
@@ -127,6 +129,7 @@ class HeadlessGlkOte {
     // Harness API.
     takeBuffer() { const b = this.buffer; this.buffer = ''; return b; }
     sendLine(cmd) { this._send('line', { id: this.lineWindowId }, cmd); }
+    sendChar(ch) { this._send('char', { id: this.charWindowId }, ch); }
     statusText() { return (this.gridlines[this.gridWindowId] || []).join('\n'); }
 }
 
@@ -214,8 +217,25 @@ export class IFVM {
         this._giDispa = giDispa;
         this._isGlulx = isGlulx;
         this._loaded = true;
-        const boot = glkote.takeBuffer();   // opening scene (fresh load) or redraw (restore)
+        let boot = glkote.takeBuffer();     // opening scene (fresh load) or redraw (restore)
+        boot += this._advanceCharPrompts(); // skip "press any key" / start menus (space = default)
         if (!snapshot) this._intro = cleanOutput(boot, '');
+    }
+
+    /**
+     * Answer pending single-key prompts with a space until the game asks for a
+     * command line (bounded). Real catalog games (Inform 7 especially) gate the
+     * opening on "press any key" and a start menu whose default is SPACE, and can
+     * pause mid-story the same way; the Z-machine demos never request char input,
+     * so this is a no-op for them. Returns any text the skipped prompts printed.
+     */
+    _advanceCharPrompts(max = 20) {
+        let out = '';
+        while (max-- > 0 && this._glkote.charRequested && !this._glkote.lineRequested) {
+            this._glkote.sendChar(' ');
+            out += this._glkote.takeBuffer();
+        }
+        return out;
     }
 
     /** Load a story file (.z3/.z5/.z8/.ulx, or a .gblorb/.zblorb wrapper). Resets all state. */
@@ -250,8 +270,11 @@ export class IFVM {
     step(command) {
         if (!this._loaded) throw new Error('ST_IF: no story loaded');
         this._glkote.takeBuffer();
+        const pre = this._advanceCharPrompts();          // clear a pending key prompt first
         this._glkote.sendLine(String(command));
-        return cleanOutput(this._glkote.takeBuffer(), String(command));
+        let out = this._glkote.takeBuffer();
+        out += this._advanceCharPrompts();               // and any "[press a key]" pause after
+        return cleanOutput(pre, '') + cleanOutput(out, String(command));
     }
 
     /**
