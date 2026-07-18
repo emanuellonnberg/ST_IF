@@ -11,7 +11,7 @@ import { IFVM } from './vm.js';
 import { translate, buildRepairPrompt, parseCommand } from './translator.js';
 import { decideMove, decideAgency, decideUse } from './companion.js';
 import { runTurn } from './turn.js';
-import { readState, initState, getActiveSnapshot, rewindTo, KEY, setCompanion, getCompanionSnapshot, getRoomDescription, setRoomDescription, getInventoryText, setInventoryText, getExitsForRoom, setExitsForRoom, getEdgesForRoom, readTogether, getWorldGraph, recordRoom, recordEdge, setAnchor, getNpcs, setNpcs, getQuests, setQuests, getMode, setMode, MODES } from './state.js';
+import { readState, initState, getActiveSnapshot, rewindTo, KEY, setCompanion, getCompanionSnapshot, getRoomDescription, setRoomDescription, getInventoryText, setInventoryText, getExitsForRoom, setExitsForRoom, getEdgesForRoom, readTogether, getWorldGraph, recordRoom, recordEdge, setAnchor, getNpcs, setNpcs, getQuests, setQuests, getMode, setMode, MODES, getStoryRef, setStoryRef } from './state.js';
 import { loadSettings, getSettings, wireSettingsUI, base64ToBytes, bytesToBase64 } from './settings.js';
 import { stripReasoning, compactInventory } from './clean.js';
 import { extractExits, mergeExits, formatExitsLine } from './exits.js';
@@ -21,9 +21,11 @@ import { parseEffectProposal, validateEffect, effectVerb } from './effects.js';
 import { addQuest, removeQuest, listQuests, resolveCompletion } from './quest.js';
 import { parseManifest, planSeed } from './scenario.js';
 import { buildOpeningBlock } from './canon.js';
+import { libAdd, libGet, libList, libRemove, refIdentity, snapshotMatchesRef } from './storylib.js';
 
 const vm = new IFVM();
 const companionVM = new IFVM();
+let loadedRefIdentity = null;   // which story the live VMs currently hold (see storylib refIdentity)
 
 // SillyTavern's `responseLength` override mutates a shared global (`amount_gen`) via a
 // non-reentrant `TempResponseLength`. Two overlapping quiet generations stomp each
@@ -369,9 +371,21 @@ async function applyStoryBytes(name, bytes, id, file) {
     s.storyId = id || '';          // base-world id for export/import (bundled worlds only)
     s.storyFile = file || '';      // bundled world filename — lets a fresh chat re-seed its scenario
     s.storyBase64 = bytesToBase64(bytes);
+    // Per-chat story reference: bundled worlds re-fetch by filename; uploads go into
+    // the settings story library so every chat can find its own game later.
+    let ref;
+    if (file) {
+        ref = { source: 'bundled', file, name, id: id || '' };
+    } else {
+        s.storyLibrary = s.storyLibrary ?? {};
+        const key = libAdd(s.storyLibrary, name, s.storyBase64);
+        ref = { source: 'library', key, name };
+    }
     saveSettingsDebounced();
     await vm.load(bytes);
     initState(ctx.chatMetadata, name, vm.save());
+    setStoryRef(ctx.chatMetadata, ref);
+    loadedRefIdentity = refIdentity(ref);
     readState(ctx.chatMetadata).summary = vm.getStatus();
     setRoomDescription(ctx.chatMetadata, vm.getIntro());
     await companionVM.load(bytes);
@@ -416,9 +430,10 @@ function exportWorld() {
     const ctx = getContext();
     const graph = getWorldGraph(ctx.chatMetadata);
     if (!graph.rooms.length) { toastr.info('No grown rooms to export yet.', 'ST_IF'); return; }
-    const story = getSettings().storyId || 'expanse';
+    const ref = getStoryRef(ctx.chatMetadata);
+    const story = ref?.id || getSettings().storyId || 'expanse';
     const payload = { format: 'st_if_world', version: 3, story, rooms: graph.rooms, edges: graph.edges, anchors: graph.anchors || {} };
-    const safe = String(getSettings().storyName || story).replace(/[^\w.-]+/g, '_');
+    const safe = String(ref?.name || getSettings().storyName || story).replace(/[^\w.-]+/g, '_');
     downloadText(`world-${safe}.json`, JSON.stringify(payload, null, 2));
     toastr.success(`Exported ${graph.rooms.length} room(s).`, 'ST_IF');
 }
@@ -444,7 +459,7 @@ async function importWorld(payload) {
     const file = story === 'expanse' ? 'expanse.z5' : await bundledWorldFile(story);
     if (!file) throw new Error(`Unknown base world "${story}" — cannot import.`);
     const bytes = new Uint8Array(await (await fetch(`/scripts/extensions/ST_IF/worlds/${file}`)).arrayBuffer());
-    await applyStoryBytes(`${story} (imported)`, bytes, story);   // fresh base + reset state
+    await applyStoryBytes(`${story} (imported)`, bytes, story, file);   // fresh base + reset state (bundled ref)
     const editOut = vm.applyWorldEdits(planReplay(graph));        // xnew/xlinkn don't move the player
     const partial = /no-free-room/i.test(editOut);
     // Persist the rebuilt world + re-seed the graph so /if-map and re-export work.
@@ -549,17 +564,58 @@ globalThis.ST_IF_interceptor = async function (chat, _contextSize, _abort, type)
 };
 
 /** Load the configured story into the VM and seed per-chat state if absent. */
+/** Resolve a story ref to its bytes, or null if the source is gone. */
+async function resolveStoryBytes(ref) {
+    try {
+        if (ref?.source === 'bundled') {
+            return new Uint8Array(await (await fetch(`${WORLDS_URL}${ref.file}`)).arrayBuffer());
+        }
+        if (ref?.source === 'library') {
+            const e = libGet(getSettings().storyLibrary ?? {}, ref.key);
+            return e ? base64ToBytes(e.base64) : null;
+        }
+        const b64 = getSettings().storyBase64;                  // legacy global slot
+        return b64 ? base64ToBytes(b64) : null;
+    } catch { return null; }
+}
+
 async function ensureStoryLoaded() {
     const s = getSettings();
-    if (!s || !s.storyBase64) return;
-    if (!vm.loaded) await vm.load(base64ToBytes(s.storyBase64));
+    if (!s) return;
     const ctx = getContext();
+    // Which game does THIS chat run? Chats made before per-chat refs fall back to
+    // the legacy global slot (exactly the old behavior).
+    const ref = getStoryRef(ctx.chatMetadata) ?? { source: 'legacy', name: s.storyName };
+    const bytes = await resolveStoryBytes(ref);
+    if (!bytes) {
+        if (readState(ctx.chatMetadata)) toastr.warning(`This chat's game "${ref.name || '?'}" is not available (removed from the library?).`, 'ST_IF');
+        return;
+    }
+    // Reload the engines only when this chat runs a different story than the VM holds.
+    const identity = refIdentity(ref);
+    if (!vm.loaded || loadedRefIdentity !== identity) {
+        await vm.load(bytes);
+        await companionVM.load(bytes);
+        loadedRefIdentity = identity;
+    }
     if (!readState(ctx.chatMetadata)) {
-        initState(ctx.chatMetadata, s.storyName, vm.save());
+        initState(ctx.chatMetadata, ref.name || s.storyName, vm.save());
+        setStoryRef(ctx.chatMetadata, ref);
         readState(ctx.chatMetadata).summary = vm.getStatus();   // so the room panel shows location immediately
         setRoomDescription(ctx.chatMetadata, vm.getIntro());
         saveMetadataDebounced();
         showIntroIfDebug();
+    } else if (!snapshotMatchesRef(readState(ctx.chatMetadata).storyId, ref)) {
+        // The chat's saved snapshot belongs to a DIFFERENT story than the bytes we
+        // resolved (legacy chats after the global slot changed). Restoring it would
+        // corrupt the VM — re-initialise this chat on the current story instead.
+        console.warn('[ST_IF] chat story mismatch — re-initialising', readState(ctx.chatMetadata).storyId, '->', ref.name);
+        toastr.warning(`This chat was on "${readState(ctx.chatMetadata).storyId}", which is no longer loaded — restarting it on "${ref.name}".`, 'ST_IF');
+        initState(ctx.chatMetadata, ref.name || s.storyName, vm.save());
+        setStoryRef(ctx.chatMetadata, ref);
+        readState(ctx.chatMetadata).summary = vm.getStatus();
+        setRoomDescription(ctx.chatMetadata, vm.getIntro());
+        saveMetadataDebounced();
     } else {
         // Resume: restore this chat's canonical snapshot. Old save lineages may
         // predate verbose-forcing (the flag lives in game memory), so re-assert it.
@@ -568,7 +624,6 @@ async function ensureStoryLoaded() {
     }
 
     // Companion VM mirrors the same story; seed/restore its own position.
-    if (!companionVM.loaded) await companionVM.load(base64ToBytes(s.storyBase64));
     const st = readState(ctx.chatMetadata);
     if (st) {
         const csnap = getCompanionSnapshot(ctx.chatMetadata);
@@ -579,6 +634,7 @@ async function ensureStoryLoaded() {
         }
     }
 
+    $('#st_if_story_name').text(ref.name || s.storyName || 'none loaded');
     renderRoomPanel();
     renderHud();
     ensureExitsExtracted();
@@ -586,7 +642,7 @@ async function ensureStoryLoaded() {
     // Auto-seed the bundled scenario on a fresh chat (idempotent: seedScenario no-ops
     // if the NPC/quest registries are already populated). So you no longer have to
     // re-load from the picker every new chat — just start one.
-    const wf = getSettings().storyFile;
+    const wf = getStoryRef(ctx.chatMetadata)?.file || getSettings().storyFile;
     if (wf) { try { await seedScenario(wf); } catch (e) { console.warn('[ST_IF] auto-seed failed', e); } }
 }
 
@@ -782,6 +838,32 @@ function registerSlashCommands() {
             }
             if (want === 'gm') return 'Mode: gm — lively play: the narrator voices minor background NPCs and drives pacing/hooks (registered card NPCs still speak for themselves).';
             return 'Mode: narrate — faithful play; the narrator describes only what exists.';
+        },
+    }));
+
+    SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+        name: 'if-stories',
+        helpString: 'The uploaded-story library (games chats can reference): list | remove <name or key>. Bundled worlds are not listed (they always load from the picker).',
+        unnamedArgumentList: [new SlashCommandArgument('list | remove <name>', [ARGUMENT_TYPE.STRING], false, false, '')],
+        returns: ARGUMENT_TYPE.STRING,
+        callback: async (_args, value) => {
+            const s = getSettings();
+            s.storyLibrary = s.storyLibrary ?? {};
+            const v = String(value ?? '').trim();
+            const sub = (v.split(/\s+/)[0] || 'list').toLowerCase();
+            if (sub === 'remove') {
+                const target = v.slice(sub.length).trim();
+                if (!target) return 'Usage: /if-stories remove <name or key>';
+                const ok = libRemove(s.storyLibrary, target);
+                if (ok) saveSettingsDebounced();
+                return ok ? `Removed "${target}" from the story library. (Chats that referenced it will restart on the next loaded story.)` : `No library entry "${target}".`;
+            }
+            const rows = libList(s.storyLibrary);
+            const msg = rows.length
+                ? rows.map((r) => `${r.name}  [${r.key}]  ~${r.kb} KB`).join('\n')
+                : 'Story library is empty — upload a story file to add one.';
+            postComment('*(stories)*\n```\n' + msg + '\n```');
+            return msg;
         },
     }));
 
