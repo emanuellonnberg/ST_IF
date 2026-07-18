@@ -781,6 +781,37 @@ test('glulx: a save taken after a query still restores in a fresh VM (turn.js sh
     assert.match(fresh.step('south'), /Porch/);              // plays on after reload
 });
 
+test('glulx: a .gblorb-wrapped game loads, plays, and snapshots transparently', async () => {
+    // Wrap the real garden.ulx in a minimal Blorb (RIdx + GLUL exec chunk) in memory.
+    const ascii = (s) => Array.from(s, (c) => c.charCodeAt(0));
+    const be32 = (v) => [(v >>> 24) & 0xff, (v >>> 16) & 0xff, (v >>> 8) & 0xff, v & 0xff];
+    const ridx = [...ascii('RIdx'), ...be32(16), ...be32(1), ...ascii('Exec'), ...be32(0), ...be32(12 + 24)];
+    const exec = [...ascii('GLUL'), ...be32(glulxGarden.length), ...glulxGarden];
+    const body = [...ascii('IFRS'), ...ridx, ...exec];
+    const gblorb = new Uint8Array([...ascii('FORM'), ...be32(body.length), ...body]);
+
+    const vm = new IFVM();
+    await vm.load(gblorb);
+    assert.equal(vm.getStatus().location, 'Porch');          // unwrapped + booted
+    vm.step('take lantern');
+    const snap = vm.save();
+    const vm2 = new IFVM();
+    await vm2.load(gblorb);                                  // fresh VM from the same blorb
+    vm2.restore(snap);
+    assert.match(vm2.query('inventory'), /lantern/);         // snapshot round-trips
+});
+
+test('glulx: persisted snapshots are packed and much smaller than raw', async () => {
+    const vm = new IFVM();
+    await vm.load(glulxGarden);
+    vm.step('take lantern');
+    const packed = vm.save();
+    const parsed = JSON.parse(atob(packed));
+    assert.equal(typeof parsed.__ram64, 'string');           // the pack marker
+    assert.equal(parsed.ram, undefined);                     // raw ram not persisted
+    assert.ok(packed.length < 30000, `packed save should be far under the ~72KB raw (got ${packed.length})`);
+});
+
 test('glulx: query has zero net game effect', async () => {
     const vm = new IFVM();
     await vm.load(glulxGarden);

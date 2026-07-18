@@ -14,6 +14,8 @@ import ZVM from './lib/zvm.js';
 import ZVMDispatch from './lib/dispatch.js';
 import { QuixeClass } from './lib/quixe.js';
 import { GiDispaClass } from './lib/gidispa.js';
+import { extractStory } from './blorb.js';
+import { packSnapshot, unpackSnapshot } from './snapcodec.js';
 
 const METRICS = {
     buffercharheight: 1, buffercharwidth: 1, buffermarginx: 0, buffermarginy: 0,
@@ -216,9 +218,13 @@ export class IFVM {
         if (!snapshot) this._intro = cleanOutput(boot, '');
     }
 
-    /** Load a story file. bytes: Uint8Array of a .z3/.z5/.z8 file. Resets all state. */
+    /** Load a story file (.z3/.z5/.z8/.ulx, or a .gblorb/.zblorb wrapper). Resets all state. */
     async load(bytes) {
         this._story = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+        // Unwrap a Blorb archive to its GLUL/ZCOD executable chunk; the engine choice
+        // below then keys off the story magic as usual.
+        const unwrapped = extractStory(this._story);
+        if (unwrapped) this._story = unwrapped.bytes;
         this._boot(this._story, null);
         // Force VERBOSE mode so re-entering a visited room still prints the full
         // description (Z-machine defaults to BRIEF: name-only on return). The
@@ -304,13 +310,16 @@ export class IFVM {
         // Glulx: the glkapi already autosaved into the Dialog at the last input boundary
         // (see _boot) — the stored snapshot IS the state after the last completed step.
         // Before the first input it is null; restoring null re-boots fresh, which is
-        // exactly the turn-zero state, so the round-trip stays correct.
-        return btoa(JSON.stringify(this._dialog._snap));
+        // exactly the turn-zero state, so the round-trip stays correct. The ram image
+        // is packed (XOR-vs-image + RLE + base64) since snapshots persist per turn.
+        const snap = this._isGlulx ? packSnapshot(this._dialog._snap, this._story) : this._dialog._snap;
+        return btoa(JSON.stringify(snap));
     }
 
     /** Restore VM state from a base64 string produced by save(). */
     restore(snapshot) {
-        const snap = JSON.parse(atob(snapshot));
+        let snap = JSON.parse(atob(snapshot));
+        snap = unpackSnapshot(snap, this._story);   // no-op for ZVM / unpacked saves
         this._boot(this._story, snap);
     }
 
