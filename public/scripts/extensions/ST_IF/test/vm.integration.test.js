@@ -828,6 +828,33 @@ test('glulx: char-input prompts (press-any-key / start menus) are auto-advanced'
     assert.equal(vm2.getStatus().location, 'Hall');          // snapshots unaffected
 });
 
+test('glulx: the big pool — a -G build grows past the zcode cap', async () => {
+    // expanse.h sizes its pool by target: 48 rooms on zcode, 240 under TARGET_GLULX.
+    const big = new Uint8Array(readFileSync(new URL('../worlds/expanse-glulx.ulx', import.meta.url)));
+    const vm = new IFVM();
+    await vm.load(big);
+    assert.equal(vm.isExpandable(), true);
+    let ok = 0;
+    for (let i = 0; i < 60 && /xnew ok/.test(vm.step(`xnew r${i}`)); i++) ok++;
+    assert.equal(ok, 60, 'grew 60 rooms — impossible on the 48-room zcode pool');
+    // the normal engine growth path works too
+    const out = vm.applyWorldEdits(['xroom north courtyard', 'xdesc A wide gravel courtyard.', 'xobj 0 fountain', 'xodesc a dry stone fountain']);
+    assert.match(out, /xroom ok/);
+    assert.match(vm.step('north'), /courtyard/i);
+    assert.match(vm.step('examine fountain'), /dry stone fountain/i);
+});
+
+test('parseStatus: classic Score/Moves and the I7 fraction style', async () => {
+    const { parseStatus } = await import('../vm.js');
+    assert.deepEqual(parseStatus(' At End Of Road     Score: 36    Moves: 2  '),
+        { location: 'At End Of Road', score: 36, moves: 2 });
+    // I7 fraction ("0/100"): first number is the score; second is ambiguous → moves null.
+    assert.deepEqual(parseStatus(' Your Dorm Room                0/100  '),
+        { location: 'Your Dorm Room', score: 0, moves: null });
+    assert.deepEqual(parseStatus(' Lab  Turns: 7 '), { location: 'Lab', score: null, moves: 7 });
+    assert.deepEqual(parseStatus(''), { location: '', score: null, moves: null });
+});
+
 test('glulx: query has zero net game effect', async () => {
     const vm = new IFVM();
     await vm.load(glulxGarden);

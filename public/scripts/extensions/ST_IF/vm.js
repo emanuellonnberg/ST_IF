@@ -141,16 +141,22 @@ class HeadlessDialog {
     log() {}
 }
 
-function parseStatus(text) {
+export function parseStatus(text) {
     const line = (text || '').split('\n').find((l) => l.trim().length > 0) || '';
     const scoreMatch = line.match(/Score:\s*(-?\d+)/i);
     const movesMatch = line.match(/(?:Moves|Turns):\s*(\d+)/i);
     const cells = line.split(/\s{2,}/).map((s) => s.trim()).filter(Boolean);
-    return {
-        location: cells[0] || line.trim(),
-        score: scoreMatch ? Number(scoreMatch[1]) : null,
-        moves: movesMatch ? Number(movesMatch[1]) : null,
-    };
+    let score = scoreMatch ? Number(scoreMatch[1]) : null;
+    let moves = movesMatch ? Number(movesMatch[1]) : null;
+    if (score === null && moves === null) {
+        // Inform 7 fraction style ("0/100" on the right): the first number is the
+        // score; the second is ambiguous (turns OR max score), so leave moves null.
+        for (const c of cells.slice(1)) {
+            const m = c.match(/^(-?\d+)\s*\/\s*(\d+)$/);
+            if (m) { score = Number(m[1]); break; }
+        }
+    }
+    return { location: cells[0] || line.trim(), score, moves };
 }
 
 /** Strip the echoed command line and trailing parser prompt from step output. */

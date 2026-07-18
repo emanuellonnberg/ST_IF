@@ -39,6 +39,11 @@ room + portable light, a switchable lamp, and takeable objects.
   `/if-quest add rats giver=barkeep goal="clear the cellar" reward=gold 10 needs=rats_done` —
   the barkeep then pays the bounded reward (the LLM proposes, the engine validates, the VM
   grants real gold).
+- `expanse-glulx.ulx` — the growable expanse compiled as **Glulx**: same world, but the pool is
+  sized for Glulx's roomier memory — **240 rooms / 480 objects** versus the Z-machine's 48/96
+  (the extra blanks are `#Ifdef TARGET_GLULX` in the generated `expanse.h`). Pick this for big
+  dynamically-grown worlds. All engine meta-verbs (growth, effects, items, NPC bodies) work
+  identically under Glulx.
 - `garden-glulx.ulx` — the garden compiled as **Glulx** (`inform6 -G`): the demo for ST_IF's
   second engine. Glulx stories run on the vendored Quixe interpreter through the same Glk
   plumbing as the Z-machine — load it from the picker or upload any `.ulx`, or a Blorb-wrapped

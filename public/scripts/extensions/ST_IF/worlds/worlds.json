@@ -1,10 +1,42 @@
 [
-    { "name": "Apartment (sandbox)", "file": "apartment.z5" },
-    { "name": "Garden (sandbox)", "file": "garden.z5" },
-    { "name": "Expanse (empty, growable)", "file": "expanse.z5", "id": "expanse" },
-    { "name": "Garden (expandable)", "file": "garden-expanse.z5", "id": "garden" },
-    { "name": "Apartment (expandable)", "file": "apartment-expanse.z5", "id": "apartment" },
-    { "name": "The Adventurer's Rest", "file": "tavern.z5" },
-    { "name": "Thornfield Manor (mystery)", "file": "thornfield.z5" },
-    { "name": "Garden (Glulx demo)", "file": "garden-glulx.ulx" }
+    {
+        "name": "Apartment (sandbox)",
+        "file": "apartment.z5"
+    },
+    {
+        "name": "Garden (sandbox)",
+        "file": "garden.z5"
+    },
+    {
+        "name": "Expanse (empty, growable)",
+        "file": "expanse.z5",
+        "id": "expanse"
+    },
+    {
+        "name": "Garden (expandable)",
+        "file": "garden-expanse.z5",
+        "id": "garden"
+    },
+    {
+        "name": "Apartment (expandable)",
+        "file": "apartment-expanse.z5",
+        "id": "apartment"
+    },
+    {
+        "name": "The Adventurer's Rest",
+        "file": "tavern.z5"
+    },
+    {
+        "name": "Thornfield Manor (mystery)",
+        "file": "thornfield.z5"
+    },
+    {
+        "name": "Garden (Glulx demo)",
+        "file": "garden-glulx.ulx"
+    },
+    {
+        "name": "Expanse (Glulx, big)",
+        "file": "expanse-glulx.ulx",
+        "id": "expanse-glulx"
+    }
 ]
