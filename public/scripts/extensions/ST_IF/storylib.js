@@ -37,6 +37,25 @@ export function libRemove(lib, keyOrName) {
     return false;
 }
 
+/**
+ * Promote the legacy global story slot to a STABLE ref: bundled worlds by filename,
+ * anything else into the library (mutates lib; caller persists settings). Legacy refs
+ * must never be stored on a chat — they resolve from a mutable global slot, so a
+ * later story switch would feed this chat's snapshot to different bytes.
+ * @param {{storyFile?:string, storyName?:string, storyId?:string, storyBase64?:string}} s
+ * @param {object} lib settings.storyLibrary
+ * @returns {object|null} a bundled/library ref, or null if the slot is empty
+ */
+export function promoteLegacyRef(s, lib) {
+    if (s.storyFile) return { source: 'bundled', file: s.storyFile, name: s.storyName || s.storyFile, id: s.storyId || '' };
+    if (s.storyBase64) {
+        const name = s.storyName || 'uploaded story';
+        const key = libAdd(lib, name, s.storyBase64);
+        return { source: 'library', key, name };
+    }
+    return null;
+}
+
 /** Stable identity for "is the VM already running this story?" comparisons. */
 export function refIdentity(ref) {
     if (!ref) return null;

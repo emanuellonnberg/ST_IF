@@ -1,7 +1,7 @@
 // Unit tests for storylib.js — the uploaded-story library + per-chat story refs.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { libAdd, libGet, libList, libRemove, refIdentity, snapshotMatchesRef } from '../storylib.js';
+import { libAdd, libGet, libList, libRemove, refIdentity, snapshotMatchesRef, promoteLegacyRef } from '../storylib.js';
 import { initState, getStoryRef, setStoryRef } from '../state.js';
 
 test('libAdd stores by a name-derived key; identical re-add is idempotent', () => {
@@ -43,6 +43,20 @@ test('refIdentity distinguishes sources; snapshotMatchesRef guards restores', ()
     assert.ok(!snapshotMatchesRef('The Adventurer\'s Rest', { source: 'legacy', name: 'Trinity.z4' }));
     assert.ok(!snapshotMatchesRef(null, { name: 'X' }));
     assert.ok(!snapshotMatchesRef('X', null));
+});
+
+test('promoteLegacyRef upgrades the mutable global slot to a stable ref (PR #34 review P1)', () => {
+    // Bundled slot → bundled ref (re-fetchable by filename).
+    const b = promoteLegacyRef({ storyFile: 'tavern.z5', storyName: 'Tavern', storyId: 'tavern' }, {});
+    assert.deepEqual(b, { source: 'bundled', file: 'tavern.z5', name: 'Tavern', id: 'tavern' });
+    // Uploaded slot → captured into the library, so later global-slot changes can't
+    // swap this chat's bytes out from under its snapshot.
+    const lib = {};
+    const u = promoteLegacyRef({ storyName: 'Trinity.z4', storyBase64: 'AAAA' }, lib);
+    assert.equal(u.source, 'library');
+    assert.equal(libGet(lib, u.key).base64, 'AAAA');
+    // Empty slot → nothing to promote.
+    assert.equal(promoteLegacyRef({}, {}), null);
 });
 
 test('storyRef persists in chat state', () => {

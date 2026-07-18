@@ -21,7 +21,7 @@ import { parseEffectProposal, validateEffect, effectVerb } from './effects.js';
 import { addQuest, removeQuest, listQuests, resolveCompletion } from './quest.js';
 import { parseManifest, planSeed } from './scenario.js';
 import { buildOpeningBlock } from './canon.js';
-import { libAdd, libGet, libList, libRemove, refIdentity, snapshotMatchesRef } from './storylib.js';
+import { libAdd, libGet, libList, libRemove, refIdentity, snapshotMatchesRef, promoteLegacyRef } from './storylib.js';
 
 const vm = new IFVM();
 const companionVM = new IFVM();
@@ -583,12 +583,23 @@ async function ensureStoryLoaded() {
     const s = getSettings();
     if (!s) return;
     const ctx = getContext();
-    // Which game does THIS chat run? Chats made before per-chat refs fall back to
-    // the legacy global slot (exactly the old behavior).
+    // Which game does THIS chat run? Chats made before per-chat refs fall back to the
+    // legacy global slot. A legacy ref is derived FRESH each call (name = the slot's
+    // current label) and is never persisted — it points at mutable bytes, so storing
+    // it would let a later story switch feed this chat's snapshot to the wrong game.
+    const isLegacy = !getStoryRef(ctx.chatMetadata);
     const ref = getStoryRef(ctx.chatMetadata) ?? { source: 'legacy', name: s.storyName };
     const bytes = await resolveStoryBytes(ref);
     if (!bytes) {
-        if (readState(ctx.chatMetadata)) toastr.warning(`This chat's game "${ref.name || '?'}" is not available (removed from the library?).`, 'ST_IF');
+        // The chat's story is gone (library entry removed / empty legacy slot). Unload
+        // the engines so nothing keeps acting on the PREVIOUS chat's game.
+        vm.unload();
+        companionVM.unload();
+        loadedRefIdentity = null;
+        $('#st_if_story_name').text(`${ref.name || '?'} (unavailable)`);
+        if (readState(ctx.chatMetadata)) toastr.warning(`This chat's game "${ref.name || '?'}" is not available (removed from the library?). Load a story to continue.`, 'ST_IF');
+        renderRoomPanel();
+        renderHud();
         return;
     }
     // Reload the engines only when this chat runs a different story than the VM holds.
@@ -598,9 +609,19 @@ async function ensureStoryLoaded() {
         await companionVM.load(bytes);
         loadedRefIdentity = identity;
     }
+    // The ref persisted on the chat must be stable: promote a legacy slot to a
+    // bundled/library ref before storing it.
+    const stableRef = () => {
+        if (!isLegacy) return ref;
+        s.storyLibrary = s.storyLibrary ?? {};
+        const p = promoteLegacyRef(s, s.storyLibrary);
+        saveSettingsDebounced();
+        return p ?? ref;
+    };
     if (!readState(ctx.chatMetadata)) {
-        initState(ctx.chatMetadata, ref.name || s.storyName, vm.save());
-        setStoryRef(ctx.chatMetadata, ref);
+        const sref = stableRef();
+        initState(ctx.chatMetadata, sref.name || s.storyName, vm.save());
+        if (sref.source !== 'legacy') setStoryRef(ctx.chatMetadata, sref);
         readState(ctx.chatMetadata).summary = vm.getStatus();   // so the room panel shows location immediately
         setRoomDescription(ctx.chatMetadata, vm.getIntro());
         saveMetadataDebounced();
@@ -611,12 +632,19 @@ async function ensureStoryLoaded() {
         // corrupt the VM — re-initialise this chat on the current story instead.
         console.warn('[ST_IF] chat story mismatch — re-initialising', readState(ctx.chatMetadata).storyId, '->', ref.name);
         toastr.warning(`This chat was on "${readState(ctx.chatMetadata).storyId}", which is no longer loaded — restarting it on "${ref.name}".`, 'ST_IF');
-        initState(ctx.chatMetadata, ref.name || s.storyName, vm.save());
-        setStoryRef(ctx.chatMetadata, ref);
+        const sref = stableRef();
+        initState(ctx.chatMetadata, sref.name || s.storyName, vm.save());
+        if (sref.source !== 'legacy') setStoryRef(ctx.chatMetadata, sref);
         readState(ctx.chatMetadata).summary = vm.getStatus();
         setRoomDescription(ctx.chatMetadata, vm.getIntro());
         saveMetadataDebounced();
     } else {
+        // Legacy chat resuming on a still-matching story: adopt a stable ref so this
+        // chat keeps its game even after the global slot changes later.
+        if (isLegacy) {
+            const sref = stableRef();
+            if (sref.source !== 'legacy') { setStoryRef(ctx.chatMetadata, sref); saveMetadataDebounced(); }
+        }
         // Resume: restore this chat's canonical snapshot. Old save lineages may
         // predate verbose-forcing (the flag lives in game memory), so re-assert it.
         const snap = getActiveSnapshot(ctx.chatMetadata);

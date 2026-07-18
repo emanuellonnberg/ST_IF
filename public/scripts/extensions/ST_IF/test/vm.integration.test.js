@@ -855,6 +855,18 @@ test('parseStatus: classic Score/Moves and the I7 fraction style', async () => {
     assert.deepEqual(parseStatus(''), { location: '', score: null, moves: null });
 });
 
+test('unload drops the story so nothing acts on a stale game (PR #34 review P2)', async () => {
+    const vm = new IFVM();
+    await vm.load(apt);
+    assert.equal(vm.loaded, true);
+    vm.unload();
+    assert.equal(vm.loaded, false);
+    assert.throws(() => vm.step('look'), /no story loaded/);
+    assert.throws(() => vm.save(), /no story loaded/);
+    await vm.load(apt);                                       // re-arms cleanly
+    assert.equal(vm.getStatus().location, 'Hallway');
+});
+
 test('glulx: query has zero net game effect', async () => {
     const vm = new IFVM();
     await vm.load(glulxGarden);

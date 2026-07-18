@@ -360,4 +360,15 @@ export class IFVM {
 
     /** True once a story is loaded and runnable. */
     get loaded() { return this._loaded; }
+
+    /** Drop the loaded story (e.g. its source vanished) — step()/save() then refuse
+     *  instead of silently acting on the previous chat's game. load() re-arms. */
+    unload() {
+        this._loaded = false;
+        this._vm = null;
+        this._glkote = null;
+        this._dialog = null;
+        this._story = null;
+        this._intro = '';
+    }
 }
