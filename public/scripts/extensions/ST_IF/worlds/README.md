@@ -39,6 +39,10 @@ room + portable light, a switchable lamp, and takeable objects.
   `/if-quest add rats giver=barkeep goal="clear the cellar" reward=gold 10 needs=rats_done` —
   the barkeep then pays the bounded reward (the LLM proposes, the engine validates, the VM
   grants real gold).
+- `garden-glulx.ulx` — the garden compiled as **Glulx** (`inform6 -G`): the demo for ST_IF's
+  second engine. Glulx stories (`.ulx`) run on the vendored Quixe interpreter through the same
+  Glk plumbing as the Z-machine — load it from the picker or upload any `.ulx` file. (Blorb-
+  wrapped `.gblorb` files are not unpacked yet.)
 - `thornfield.inf` / `thornfield.z5` — "Thornfield Manor", a one-night **murder mystery**: Lord
   Ashcroft lies dead in his locked study and you are the detective. ~12 rooms with a real puzzle
   chain held as ground truth — a **locked study door** (spare key in the kitchen dresser), a wall

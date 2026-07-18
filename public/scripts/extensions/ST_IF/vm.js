@@ -190,7 +190,12 @@ export class IFVM {
             // native Plotkin glkapi — bridge the three gaps:
             giDispa.set_vm = (v) => giDispa.init({ vm: v, io: Glk });          // ifvms: set_vm; Quixe: init
             Glk.getlibrary = (n) => ({ Dialog: dialog, GlkOte: glkote, GiDispa: giDispa, GiLoad: null, Blorb: null }[n] ?? null);
-            const options = { vm, io: Glk, Glk, GlkOte: glkote, Dialog: dialog, GiDispa: giDispa, do_vm_autosave: snapshot ? 1 : 0 };
+            // do_vm_autosave is ALWAYS on for Glulx: the glkapi itself then autosaves into
+            // the Dialog at every input boundary (via GiDispa.check_autosave), which is the
+            // only moment Quixe's partial-operand bookkeeping is valid. save() just reads
+            // the latest snapshot — calling vm.do_autosave() manually at an arbitrary idle
+            // moment corrupts the resume stack (the re-executed @glk(select) pops garbage).
+            const options = { vm, io: Glk, Glk, GlkOte: glkote, Dialog: dialog, GiDispa: giDispa, do_vm_autosave: 1 };
             vm.init(bytes, options);          // Quixe loads the image (ZVM would use prepare)
             const quixeStart = vm.start.bind(vm);
             vm.init = () => quixeStart();      // our glkapi RUNS the VM via VM.init() on the GlkOte 'init' event; Quixe runs via start()
@@ -293,14 +298,13 @@ export class IFVM {
     /** Serialize full VM state to a base64 string. */
     save() {
         if (!this._loaded) throw new Error('ST_IF: no story loaded');
-        if (this._isGlulx) {
-            // Quixe autosaves the VM state at a glk_select boundary; check_autosave()
-            // returns the event-structure address it needs (or null before the first input).
-            const ev = this._giDispa.check_autosave();
-            this._vm.do_autosave(ev == null ? 0 : ev);
-        } else {
-            this._vm.do_autosave(1);   // ZVM: the arg is a mode flag, not an address
+        if (!this._isGlulx) {
+            this._vm.do_autosave(1);   // ZVM: an explicit save; the arg is a mode flag
         }
+        // Glulx: the glkapi already autosaved into the Dialog at the last input boundary
+        // (see _boot) — the stored snapshot IS the state after the last completed step.
+        // Before the first input it is null; restoring null re-boots fresh, which is
+        // exactly the turn-zero state, so the round-trip stays correct.
         return btoa(JSON.stringify(this._dialog._snap));
     }
 
