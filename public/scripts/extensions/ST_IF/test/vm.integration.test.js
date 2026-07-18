@@ -761,6 +761,26 @@ test('glulx: save/restore round-trips (in-place, cross-instance, and turn zero)'
     assert.equal(vm.getStatus().location, 'Porch');
 });
 
+test('glulx: a save taken after a query still restores in a fresh VM (turn.js shape)', async () => {
+    // Regression (PR #29 review): the real turn flow queries ('inventory') between the
+    // step and the persist. Under the old manual-do_autosave design that produced a
+    // snapshot Quixe rejected on reload ("glk select: null argument"). The library-
+    // driven autosave re-seeds the Dialog on every restore, so this stays valid.
+    const vm = new IFVM();
+    await vm.load(glulxGarden);
+    vm.step('take lantern');
+    vm.step('north');
+    vm.query('inventory');
+    vm.query('look');
+    const snap = vm.save();
+    const fresh = new IFVM();
+    await fresh.load(glulxGarden);
+    fresh.restore(snap);                                     // the persisted-state reload path
+    assert.equal(fresh.getStatus().location, 'Lawn');
+    assert.match(fresh.query('inventory'), /lantern/);
+    assert.match(fresh.step('south'), /Porch/);              // plays on after reload
+});
+
 test('glulx: query has zero net game effect', async () => {
     const vm = new IFVM();
     await vm.load(glulxGarden);
