@@ -41,6 +41,10 @@ test('answerForPendingPrompt passes a literal yes/no through when the game is as
     assert.equal(answerForPendingPrompt(q, 'I ponder for a while'), null); // no clear answer
     assert.equal(answerForPendingPrompt('Taken.', 'no'), null);            // no pending question
     assert.equal(answerForPendingPrompt('', 'yes'), null);
+    // Story prose that merely ENDS with a question mark is NOT a sub-prompt —
+    // "no thanks, I head east" must reach the translator, not become a bare 'no'.
+    assert.equal(answerForPendingPrompt('The barkeep eyes you. "What\'ll it be?"', 'no thanks, I head east'), null);
+    assert.equal(answerForPendingPrompt('Do you dare enter the crypt?', 'yes I do'), null);   // prose "?", no "? >" prompt
 });
 
 test('parseCommand extracts one command; none/empty -> null; tolerates quotes/array', () => {
