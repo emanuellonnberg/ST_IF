@@ -50,7 +50,13 @@ const PARSE_FAILS = [
  */
 export function answerForPendingPrompt(lastOutput, playerText) {
     const out = String(lastOutput ?? '').trim();
-    if (!/answer yes or no|\by\/n\b|\?\s*>?\s*$/i.test(out)) return null;
+    // Require MODAL evidence of a parser sub-prompt, not just story prose that
+    // happens to end with a question mark (NPC dialogue does that constantly).
+    // A sub-prompt keeps its same-line "? >" through output cleaning (only a
+    // newline-separated ">" is stripped); explicit "answer yes or no" / "y/n"
+    // also qualifies. A missed first attempt self-heals: the game re-asks with
+    // "Please answer yes or no. >", which this matches.
+    if (!/answer yes or no|\by\/n\b|\?\s*>\s*$/i.test(out)) return null;
     const t = String(playerText ?? '');
     const yes = t.search(/\b(yes|yeah|yep|aye)\b/i);
     const no = t.search(/\b(no|nope|nah)\b/i);
