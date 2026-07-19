@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildTranslatePrompt, translate, isParserFailure, buildRepairPrompt, parseCommand } from '../translator.js';
+import { buildTranslatePrompt, translate, isParserFailure, buildRepairPrompt, parseCommand, answerForPendingPrompt } from '../translator.js';
 
 const status = { location: 'Forest Path', score: 0, moves: 3 };
 
@@ -29,6 +29,18 @@ test('buildRepairPrompt carries the intent, failed command, and parser reply', (
     assert.match(p, /light lantern/);
     assert.match(p, /any such thing/);
     assert.match(p, /ONLY the command/);
+});
+
+test('answerForPendingPrompt passes a literal yes/no through when the game is asking', () => {
+    const q = 'Are you really sure you want to give up studying just yet? >';
+    assert.equal(answerForPendingPrompt(q, 'no'), 'no');
+    assert.equal(answerForPendingPrompt(q, '*answer no*'), 'no');
+    assert.equal(answerForPendingPrompt(q, 'Yes, absolutely.'), 'yes');
+    assert.equal(answerForPendingPrompt('Please answer yes or no.  >', 'yeah ok'), 'yes');
+    assert.equal(answerForPendingPrompt(q, 'no wait... yes!'), 'no');     // first answer wins
+    assert.equal(answerForPendingPrompt(q, 'I ponder for a while'), null); // no clear answer
+    assert.equal(answerForPendingPrompt('Taken.', 'no'), null);            // no pending question
+    assert.equal(answerForPendingPrompt('', 'yes'), null);
 });
 
 test('parseCommand extracts one command; none/empty -> null; tolerates quotes/array', () => {

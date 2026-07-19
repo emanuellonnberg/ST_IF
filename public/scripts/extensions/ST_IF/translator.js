@@ -40,6 +40,26 @@ const PARSE_FAILS = [
     /that's not something you can/i,
 ];
 
+/**
+ * Direct answer for a game that is waiting on a yes/no question (not a normal
+ * command prompt). IF games drop into these sub-prompts ("Are you sure? >",
+ * "Please answer yes or no.") and the translator would return [] for a bare
+ * "no" — so when the last VM output looks like a pending question and the
+ * player's message contains a clear yes/no, pass the literal answer through.
+ * @returns {'yes'|'no'|null}
+ */
+export function answerForPendingPrompt(lastOutput, playerText) {
+    const out = String(lastOutput ?? '').trim();
+    if (!/answer yes or no|\by\/n\b|\?\s*>?\s*$/i.test(out)) return null;
+    const t = String(playerText ?? '');
+    const yes = t.search(/\b(yes|yeah|yep|aye)\b/i);
+    const no = t.search(/\b(no|nope|nah)\b/i);
+    if (yes < 0 && no < 0) return null;
+    if (yes < 0) return 'no';
+    if (no < 0) return 'yes';
+    return no < yes ? 'no' : 'yes';   // both present → the one said first wins
+}
+
 /** True if the VM output is a parser-level rejection worth re-translating. */
 export function isParserFailure(text) {
     const t = String(text ?? '');

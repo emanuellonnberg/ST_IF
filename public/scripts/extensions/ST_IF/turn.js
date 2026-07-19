@@ -1,7 +1,7 @@
 // turn.js — orchestrate one chat turn. Pure: all ST/VM deps injected.
 import { readState, recordTurn, getActiveSnapshot, setCompanion, getCompanionSnapshot, setTogether, readTogether, getFollowQueue, setFollowQueue, setRoomDescription, getRoomDescription, recordMapEdge, setInventoryText, getEdgesForRoom, getExitsForRoom, recordRoom, recordEdge, getGrownRooms, cellOfRoom, roomAtCell, getAnchors, setAnchor, nextAnchorCell, getNpcs, setNpcs, getQuests, getMode } from './state.js';
 import { dirToRoom } from './exits.js';
-import { translate as translateDefault, isParserFailure } from './translator.js';
+import { translate as translateDefault, isParserFailure, answerForPendingPrompt } from './translator.js';
 import { extractMoves, zone, detectShout, validateAction } from './companion.js';
 import { buildCanonBlock, buildApartCanonBlock } from './canon.js';
 import { compactInventory } from './clean.js';
@@ -89,7 +89,14 @@ export async function runTurn(deps, chat, type) {
         if (sync.length) vm.applyWorldEdits(sync);
     }
 
-    const cmds = await translate(player.text, statusForPrompt, settings.strictness);
+    // A game blocked on an in-game yes/no question ("Are you sure? >") needs the
+    // literal answer — the translator would return [] for a bare "no" and the game
+    // would re-ask forever. Detect the pending question in the last turn's output
+    // (or the intro on turn one) and pass the player's answer through directly.
+    const prevOuts = state.history[state.history.length - 1]?.outputs ?? [];
+    const lastOut = prevOuts[prevOuts.length - 1] ?? getRoomDescription(metadata) ?? '';
+    const ynAnswer = answerForPendingPrompt(lastOut, player.text);
+    const cmds = ynAnswer ? [ynAnswer] : await translate(player.text, statusForPrompt, settings.strictness);
 
     // 5. STEP VM — collecting the commands that actually changed the player's room
     // (any form: 'north', 'enter window', 'climb tree'), and learning compass edges.

@@ -194,6 +194,20 @@ test('e2e: meeting a card NPC queues a one-time greeting', async () => {
     assert.equal(readState(metadata).pendingNpcGreet, null);     // already met -> no re-greeting
 });
 
+test('e2e: a pending in-game yes/no question gets the literal answer, not []', async () => {
+    // Live-play bug: a catalog game asked "Are you really sure...? >" — the player
+    // said "no", the translator returned [] (pure conversation), and the game
+    // re-asked forever. The pending-question passthrough must send the answer.
+    const { vm, metadata } = await loadTavern();
+    const deps = makeDeps(vm, metadata, { 'i head east': ['east'] });   // translator knows nothing else
+    const chat = [];
+    await play(deps, chat, 'I head east');
+    // Simulate the game having asked a yes/no question on the previous turn.
+    readState(metadata).history.at(-1).outputs = ['Are you really sure you want to give up studying just yet? >'];
+    await play(deps, chat, "No, I don't think so.");
+    assert.deepEqual(readState(metadata).history.at(-1).cmds, ['no']);  // literal answer stepped into the VM
+});
+
 test('e2e: a swipe reuses cached outputs and does not re-step the VM', async () => {
     const { vm, metadata } = await loadTavern();
     const deps = makeDeps(vm, metadata, { 'i head east': ['east'] });
